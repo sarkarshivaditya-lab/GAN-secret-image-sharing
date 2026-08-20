@@ -1,0 +1,122 @@
+[
+  {
+    "epoch": 1,
+    "reconstruction_loss": 0.0015181178711354733,
+    "reconstruction_psnr": 28.394411668654346,
+    "attack_psnrs": [
+      12.314973475934648,
+      12.360464808345819,
+      12.372075616434039,
+      26.114570558757745
+    ],
+    "share2_attack_psnr": 12.360464808345819,
+    "average_attack_psnr": 15.790521114868064,
+    "worst_attack_psnr": 26.114570558757745,
+    "share_statistics": [
+      {
+        "mean": 0.33317648124694826,
+        "std": 0.4711881995201111,
+        "horizontal_correlation": 2.7004696230505944e-06,
+        "vertical_correlation": 3.249970487217979e-08
+      },
+      {
+        "mean": 0.6666200165748596,
+        "std": 0.4713803153038025,
+        "horizontal_correlation": 1.0736618939688469e-07,
+        "vertical_correlation": 2.0573841961635253e-08
+      },
+      {
+        "mean": 0.3333793213367462,
+        "std": 0.4713880476951599,
+        "horizontal_correlation": 4.42209672861793e-08,
+        "vertical_correlation": 6.966989754175756e-08
+      },
+      {
+        "mean": 0.6232877125740052,
+        "std": 0.31127909326553344,
+        "horizontal_correlation": 0.016899571649730206,
+        "vertical_correlation": 0.01627389834076166
+      }
+    ]
+  },
+  {
+    "epoch": 2,
+    "reconstruction_loss": 0.0004281411946285516,
+    "reconstruction_psnr": 33.8195221116782,
+    "attack_psnrs": [
+      12.358309427723922,
+      12.36673936131792,
+      12.362711211643994,
+      26.786192071365438
+    ],
+    "share2_attack_psnr": 12.36673936131792,
+    "average_attack_psnr": 15.968488018012819,
+    "worst_attack_psnr": 26.786192071365438,
+    "share_statistics": [
+      {
+        "mean": 0.3333340005874634,
+        "std": 0.4713951330184937,
+        "horizontal_correlation": 1.05632579909809e-08,
+        "vertical_correlation": 4.427625166059102e-09
+      },
+      {
+        "mean": 0.6666069850921631,
+        "std": 0.471282553434372,
+        "horizontal_correlation": 2.227204933262783e-07,
+        "vertical_correlation": 3.36284996365066e-07
+      },
+      {
+        "mean": 0.3333764355182648,
+        "std": 0.47138665175437927,
+        "horizontal_correlation": 6.861958106085808e-08,
+        "vertical_correlation": 1.2195810132453743e-07
+      },
+      {
+        "mean": 0.5879956159591675,
+        "std": 0.21323142993450164,
+        "horizontal_correlation": 0.01469315129518509,
+        "vertical_correlation": 0.014229800783097744
+      }
+    ]
+  },
+  {
+    "epoch": 3,
+    "reconstruction_loss": 0.000366669022012502,
+    "reconstruction_psnr": 34.41326190869963,
+    "attack_psnrs": [
+      12.344149236418016,
+      12.369945917894855,
+      12.371518122581147,
+      23.730307557973337
+    ],
+    "share2_attack_psnr": 12.369945917894855,
+    "average_attack_psnr": 15.203980208716839,
+    "worst_attack_psnr": 23.730307557973337,
+    "share_statistics": [
+      {
+        "mean": 0.33333081459999087,
+        "std": 0.47140790915489195,
+        "horizontal_correlation": 1.4394063154454795e-09,
+        "vertical_correlation": 9.561755331954914e-10
+      },
+      {
+        "mean": 0.6666698455810547,
+        "std": 0.47128276419639586,
+        "horizontal_correlation": 7.23135888165416e-08,
+        "vertical_correlation": 3.9312451292516927e-07
+      },
+      {
+        "mean": 0.6666485748291016,
+        "std": 0.4714005217552185,
+        "horizontal_correlation": 3.671211781686168e-09,
+        "vertical_correlation": 1.767546713793422e-08
+      },
+      {
+        "mean": 0.601252082824707,
+        "std": 0.19494951689243317,
+        "horizontal_correlation": 0.012470854669809342,
+        "vertical_correlation": 0.012132073052227497
+      }
+    ]
+  }
+]

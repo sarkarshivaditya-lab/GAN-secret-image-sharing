@@ -1,0 +1,7 @@
+Strong baseline evaluation
+Legitimate Reconstruction PSNR: 38.5506 dB
+
+Share 1 Fresh Attacker PSNR: 25.2201 dB
+Share 2 Fresh Attacker PSNR: 25.8854 dB
+Share 3 Fresh Attacker PSNR: 20.8598 dB
+Share 4 Fresh Attacker PSNR: 23.6400 dB

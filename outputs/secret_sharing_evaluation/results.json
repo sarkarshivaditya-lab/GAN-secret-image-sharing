@@ -1,0 +1,66 @@
+{
+    "device": "mps",
+    "test_images": 1000,
+    "batch_size": 8,
+    "num_shares": 4,
+    "full_reconstruction": {
+        "mse": 0.01437201128154993,
+        "psnr_db": 18.424824505605585
+    },
+    "partial_reconstruction": {
+        "1": {
+            "mse": 0.3345213667154312,
+            "psnr_db": 4.755761375366629
+        },
+        "2": {
+            "mse": 0.32684842848777773,
+            "psnr_db": 4.856535988141014
+        },
+        "3": {
+            "mse": 0.2987346693277359,
+            "psnr_db": 5.247143728963778
+        },
+        "4": {
+            "mse": 0.01437201128154993,
+            "psnr_db": 18.424824505605585
+        }
+    },
+    "shares": {
+        "share_1": {
+            "mean": 0.1352467006047567,
+            "std": 0.2662394922193338,
+            "entropy_bits": 3.1641716283802253,
+            "horizontal_correlation": 0.22175567090511322,
+            "vertical_correlation": 0.34474864745140077
+        },
+        "share_2": {
+            "mean": 0.12445585584640503,
+            "std": 0.3293119764250356,
+            "entropy_bits": 0.6855725203937038,
+            "horizontal_correlation": -0.08567884290218353,
+            "vertical_correlation": 0.724127495765686
+        },
+        "share_3": {
+            "mean": 0.1482902057170868,
+            "std": 0.3459763674404921,
+            "entropy_bits": 1.3150941438665953,
+            "horizontal_correlation": -0.13095148038864135,
+            "vertical_correlation": 0.6979514312744141
+        },
+        "share_4": {
+            "mean": 0.1433630263010661,
+            "std": 0.27951358130566095,
+            "entropy_bits": 3.2636195186477446,
+            "horizontal_correlation": 0.34575083875656126,
+            "vertical_correlation": 0.2971285880804062
+        }
+    },
+    "cross_share_correlation": {
+        "share_1_vs_share_2": -0.08023474743962287,
+        "share_1_vs_share_3": -0.21736984765529632,
+        "share_1_vs_share_4": 0.6021643309593201,
+        "share_2_vs_share_3": 0.40554588317871093,
+        "share_2_vs_share_4": 0.19822004747390748,
+        "share_3_vs_share_4": -0.006037629849743098
+    }
+}

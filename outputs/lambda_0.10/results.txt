@@ -1,0 +1,7 @@
+Lambda = 0.10
+Legitimate Reconstruction PSNR: 36.2510 dB
+
+Share 1 Fresh Attacker PSNR: 17.8424 dB
+Share 2 Fresh Attacker PSNR: 19.5391 dB
+Share 3 Fresh Attacker PSNR: 18.6003 dB
+Share 4 Fresh Attacker PSNR: 19.7163 dB

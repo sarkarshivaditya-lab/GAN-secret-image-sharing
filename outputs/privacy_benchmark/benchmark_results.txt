@@ -1,0 +1,33 @@
+Controlled privacy model benchmark
+Training images: 5000
+Test images: 1000
+Attacker epochs: 10
+Batch size: 16
+
+Baseline
+Reconstruction PSNR: 38.550614 dB
+Share 1: 24.465962 dB
+Share 2: 27.321627 dB
+Share 3: 20.944910 dB
+Share 4: 22.222783 dB
+Average attack PSNR: 23.738820 dB
+Worst-case attack PSNR: 27.321627 dB
+
+Lambda 0.10
+Reconstruction PSNR: 36.250988 dB
+Share 1: 18.595909 dB
+Share 2: 22.709972 dB
+Share 3: 17.073274 dB
+Share 4: 19.717665 dB
+Average attack PSNR: 19.524205 dB
+Worst-case attack PSNR: 22.709972 dB
+
+Privacy-GAN
+Reconstruction PSNR: 32.544195 dB
+Share 1: 18.821884 dB
+Share 2: 19.779909 dB
+Share 3: 15.990666 dB
+Share 4: 19.218893 dB
+Average attack PSNR: 18.452838 dB
+Worst-case attack PSNR: 19.779909 dB
+

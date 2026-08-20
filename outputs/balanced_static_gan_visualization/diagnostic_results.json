@@ -1,0 +1,32 @@
+{
+    "checkpoint": "checkpoints/balanced_static_gan",
+    "images_evaluated": 1000,
+    "reconstruction_mse": 0.014372010745108127,
+    "reconstruction_psnr": 18.485278053283693,
+    "shares": {
+        "share_1": {
+            "mean": 0.13524670040607453,
+            "std": 0.2664801993370056,
+            "horizontal_correlation": 0.22175567090511322,
+            "vertical_correlation": 0.34474864745140077
+        },
+        "share_2": {
+            "mean": 0.1244558555483818,
+            "std": 0.3297400908470154,
+            "horizontal_correlation": -0.08567884290218353,
+            "vertical_correlation": 0.724127495765686
+        },
+        "share_3": {
+            "mean": 0.1482902057170868,
+            "std": 0.34642187547683717,
+            "horizontal_correlation": -0.13095148038864135,
+            "vertical_correlation": 0.6979514312744141
+        },
+        "share_4": {
+            "mean": 0.14336302626132966,
+            "std": 0.27968013072013853,
+            "horizontal_correlation": 0.34575083875656126,
+            "vertical_correlation": 0.2971285880804062
+        }
+    }
+}

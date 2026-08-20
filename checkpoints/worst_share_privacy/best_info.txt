@@ -1,0 +1,8 @@
+Best epoch: 1
+Reconstruction PSNR: 27.5972
+Average attack PSNR: 16.2301
+Worst attack PSNR: 18.9531
+Share 1 attack PSNR: 17.0167
+Share 2 attack PSNR: 18.9531
+Share 3 attack PSNR: 10.9713
+Share 4 attack PSNR: 17.9794

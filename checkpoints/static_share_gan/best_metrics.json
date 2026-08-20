@@ -1,0 +1,53 @@
+{
+  "epoch": 1,
+  "reconstruction_loss": 0.006002482762560248,
+  "reconstruction_psnr": 22.56852464533094,
+  "attack_losses": [
+    0.05947451892495155,
+    0.007743179649114609,
+    0.059149513453245164,
+    0.05917218565940857
+  ],
+  "attack_psnrs": [
+    12.328216013250746,
+    21.319298448427286,
+    12.355263655937897,
+    12.353063883982056
+  ],
+  "average_attack_psnr": 14.588960500399496,
+  "worst_attack_psnr": 21.319298448427286,
+  "noise_statistics": [
+    {
+      "mean": 0.6745540323257446,
+      "std": 0.46625785279273985,
+      "horizontal_correlation": 7.747651254248923e-06,
+      "vertical_correlation": 0.006467910293489695,
+      "low_frequency_energy": 87.77552001953126,
+      "high_frequency_energy": 0.30174091053009033
+    },
+    {
+      "mean": 0.17576169180870055,
+      "std": 0.2718368948698044,
+      "horizontal_correlation": 0.009579305518418551,
+      "vertical_correlation": 0.009274871546775103,
+      "low_frequency_energy": 30.65083642578125,
+      "high_frequency_energy": 0.7600461163520813
+    },
+    {
+      "mean": 0.333333726644516,
+      "std": 0.47141382479667665,
+      "horizontal_correlation": 2.7919989612368997e-12,
+      "vertical_correlation": 8.393225096057013e-13,
+      "low_frequency_energy": 42.667064727783206,
+      "high_frequency_energy": 0.00028217643243260684
+    },
+    {
+      "mean": 0.6666216325759887,
+      "std": 0.471229573726654,
+      "horizontal_correlation": 3.038577457118663e-06,
+      "vertical_correlation": 3.518399711310849e-07,
+      "low_frequency_energy": 85.47701702880859,
+      "high_frequency_energy": 0.11580066812038421
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+GAN Weight Candidate Evaluation
+================================================================================
+
+GAN Weight: 0.003
+Reconstruction PSNR: 26.14 dB
+Share 1 Attack PSNR: 14.34 dB
+Share 2 Attack PSNR: 24.77 dB
+Share 3 Attack PSNR: 28.12 dB
+Share 4 Attack PSNR: 26.17 dB
+Average Attack PSNR: 23.35 dB
+Worst-case Attack PSNR: 28.12 dB
+
+GAN Weight: 0.005
+Reconstruction PSNR: 25.98 dB
+Share 1 Attack PSNR: 21.84 dB
+Share 2 Attack PSNR: 4.80 dB
+Share 3 Attack PSNR: 27.44 dB
+Share 4 Attack PSNR: 9.56 dB
+Average Attack PSNR: 15.91 dB
+Worst-case Attack PSNR: 27.44 dB
+

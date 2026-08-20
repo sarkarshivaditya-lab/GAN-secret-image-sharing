@@ -1,0 +1,6 @@
+{
+    "gan_weight": 0.005,
+    "privacy_weight": 0.1,
+    "best_epoch": 3,
+    "best_reconstruction_psnr": 26.022261804027174
+}

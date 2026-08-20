@@ -1,0 +1,37 @@
+Privacy GAN experiment
+Training images: 5000
+Test images: 1000
+Epochs: 3
+Privacy weight: 0.1
+GAN weight: 0.01
+Attacker steps: 2
+
+Epoch 1
+Train Reconstruction Loss: 0.000728
+Train Attack Loss: 0.050901
+Train Privacy GAN Loss: 0.871221
+Train Discriminator Loss: 0.634090
+Discriminator Accuracy: 62.67%
+Validation Reconstruction Loss: 0.000565
+Validation Reconstruction PSNR: 32.5927 dB
+
+Epoch 2
+Train Reconstruction Loss: 0.000684
+Train Attack Loss: 0.050794
+Train Privacy GAN Loss: 0.909988
+Train Discriminator Loss: 0.617929
+Discriminator Accuracy: 63.67%
+Validation Reconstruction Loss: 0.000969
+Validation Reconstruction PSNR: 30.3045 dB
+
+Epoch 3
+Train Reconstruction Loss: 0.000742
+Train Attack Loss: 0.050463
+Train Privacy GAN Loss: 0.915867
+Train Discriminator Loss: 0.613914
+Discriminator Accuracy: 64.09%
+Validation Reconstruction Loss: 0.000701
+Validation Reconstruction PSNR: 31.6162 dB
+
+Best epoch: 1
+Best reconstruction PSNR: 32.5927 dB

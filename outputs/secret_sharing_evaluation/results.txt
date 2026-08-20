@@ -1,0 +1,51 @@
+======================================================================
+SECRET-SHARING DIAGNOSTIC
+======================================================================
+
+Device: mps
+Test images: 1000
+
+RECONSTRUCTION RESULTS
+----------------------------------------------------------------------
+1 share(s) | MSE: 0.334521 | PSNR: 4.76 dB
+2 share(s) | MSE: 0.326848 | PSNR: 4.86 dB
+3 share(s) | MSE: 0.298735 | PSNR: 5.25 dB
+4 share(s) | MSE: 0.014372 | PSNR: 18.42 dB
+
+SHARE STATISTICS
+----------------------------------------------------------------------
+share_1
+  Mean: 0.135247
+  Std: 0.266239
+  Entropy: 3.1642 bits
+  Horizontal correlation: 0.221756
+  Vertical correlation: 0.344749
+share_2
+  Mean: 0.124456
+  Std: 0.329312
+  Entropy: 0.6856 bits
+  Horizontal correlation: -0.085679
+  Vertical correlation: 0.724127
+share_3
+  Mean: 0.148290
+  Std: 0.345976
+  Entropy: 1.3151 bits
+  Horizontal correlation: -0.130951
+  Vertical correlation: 0.697951
+share_4
+  Mean: 0.143363
+  Std: 0.279514
+  Entropy: 3.2636 bits
+  Horizontal correlation: 0.345751
+  Vertical correlation: 0.297129
+
+CROSS-SHARE CORRELATION
+----------------------------------------------------------------------
+share_1_vs_share_2: -0.080235
+share_1_vs_share_3: -0.217370
+share_1_vs_share_4: 0.602164
+share_2_vs_share_3: 0.405546
+share_2_vs_share_4: 0.198220
+share_3_vs_share_4: -0.006038
+
+======================================================================
