@@ -1,0 +1,105 @@
+{
+    "image_number": 2,
+    "input_path": "data/professor_images/image2.jpeg",
+    "original_dimensions": {
+        "width": 777,
+        "height": 769
+    },
+    "model_dimensions": {
+        "width": 256,
+        "height": 256
+    },
+    "number_of_shares": 4,
+    "reconstruction": {
+        "mse": 0.01062240544706583,
+        "rmse": 0.10306505444167693,
+        "mae": 0.055481571704149246,
+        "psnr_db": 19.737771259951266,
+        "ssim": 0.6736361384391785,
+        "max_absolute_error": 0.9971932768821716
+    },
+    "matrix": {
+        "definition": "E(x,y,c) = |I(x,y,c) - I_hat(x,y,c)|",
+        "shape": [
+            3,
+            256,
+            256
+        ],
+        "mean_absolute_error": 0.055481571704149246,
+        "maximum_absolute_error": 0.9971932768821716,
+        "minimum_absolute_error": 3.5762786865234375e-07
+    },
+    "shares": {
+        "share_1": {
+            "mean": 0.1259618103504181,
+            "std": 0.11329513043165207,
+            "minimum": 0.001232761307619512,
+            "maximum": 0.8458876013755798
+        },
+        "share_2": {
+            "mean": 0.2648586332798004,
+            "std": 0.16313910484313965,
+            "minimum": 0.00203215004876256,
+            "maximum": 0.8747909069061279
+        },
+        "share_3": {
+            "mean": 0.5093259215354919,
+            "std": 0.41104188561439514,
+            "minimum": 1.549703711134498e-06,
+            "maximum": 0.9998760223388672
+        },
+        "share_4": {
+            "mean": 0.3079346716403961,
+            "std": 0.19290989637374878,
+            "minimum": 0.004166787955909967,
+            "maximum": 0.8404414057731628
+        }
+    },
+    "individual_share_attack_results": {
+        "share_1": {
+            "available": true,
+            "checkpoint": "checkpoints/privacy_adversarial/attacker_share_1.pth",
+            "mse": 0.03963637724518776,
+            "rmse": 0.19908886770783482,
+            "mae": 0.1598871499300003,
+            "psnr_db": 14.019060467781749
+        },
+        "share_2": {
+            "available": true,
+            "checkpoint": "checkpoints/privacy_adversarial/attacker_share_2.pth",
+            "mse": 0.02966165542602539,
+            "rmse": 0.17222559457300587,
+            "mae": 0.13009074330329895,
+            "psnr_db": 15.27804614523906
+        },
+        "share_3": {
+            "available": true,
+            "checkpoint": "checkpoints/privacy_adversarial/attacker_share_3.pth",
+            "mse": 0.040832217782735825,
+            "rmse": 0.20206983392564024,
+            "mae": 0.16098983585834503,
+            "psnr_db": 13.889970309355217
+        },
+        "share_4": {
+            "available": true,
+            "checkpoint": "checkpoints/privacy_adversarial/attacker_share_4.pth",
+            "mse": 0.04537700116634369,
+            "rmse": 0.2130187812526015,
+            "mae": 0.17087137699127197,
+            "psnr_db": 13.431642087583388
+        }
+    },
+    "files": {
+        "original": "outputs/professor_privacy_attack/image_2/original_256x256.png",
+        "reconstructed": "outputs/professor_privacy_attack/image_2/reconstructed_256x256.png",
+        "shares": [
+            "outputs/professor_privacy_attack/image_2/share_1.png",
+            "outputs/professor_privacy_attack/image_2/share_2.png",
+            "outputs/professor_privacy_attack/image_2/share_3.png",
+            "outputs/professor_privacy_attack/image_2/share_4.png"
+        ],
+        "error_matrix": "outputs/professor_privacy_attack/image_2/absolute_error_matrix.npy",
+        "error_heatmap": "outputs/professor_privacy_attack/image_2/error_heatmap.png",
+        "comparison": "outputs/professor_privacy_attack/image_2/comparison.png"
+    }
+}

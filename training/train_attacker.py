@@ -106,7 +106,7 @@ def train_attacker(share_index, device):
         print("Training images: 5,000")
         print("Test images: 1,000")
         print("Epochs: 3")
-        print("Shares tested: 1")
+        print("Shares tested: 4")
         print()
 
     train_loader = DataLoader(
@@ -248,7 +248,7 @@ def main():
     print("Device:", device)
 
     if QUICK_TEST:
-        share_indices = range(1, 2)
+        share_indices = range(1, 5)
     else:
         share_indices = range(1, 5)
 

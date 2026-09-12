@@ -1,0 +1,105 @@
+{
+    "image_number": 1,
+    "input_path": "data/professor_images/image1.jpeg",
+    "original_dimensions": {
+        "width": 839,
+        "height": 872
+    },
+    "model_dimensions": {
+        "width": 256,
+        "height": 256
+    },
+    "number_of_shares": 4,
+    "reconstruction": {
+        "mse": 0.011471730656921864,
+        "rmse": 0.10710616535438967,
+        "mae": 0.08117839694023132,
+        "psnr_db": 19.40371058292887,
+        "ssim": 0.3118041753768921,
+        "max_absolute_error": 0.5532017946243286
+    },
+    "matrix": {
+        "definition": "E(x,y,c) = |I(x,y,c) - I_hat(x,y,c)|",
+        "shape": [
+            3,
+            256,
+            256
+        ],
+        "mean_absolute_error": 0.08117839694023132,
+        "maximum_absolute_error": 0.5532017946243286,
+        "minimum_absolute_error": 1.1920928955078125e-06
+    },
+    "shares": {
+        "share_1": {
+            "mean": 0.3760286271572113,
+            "std": 0.44846808910369873,
+            "minimum": 3.893784979776965e-13,
+            "maximum": 1.0
+        },
+        "share_2": {
+            "mean": 0.2879325747489929,
+            "std": 0.42130282521247864,
+            "minimum": 5.79710579451225e-22,
+            "maximum": 1.0
+        },
+        "share_3": {
+            "mean": 0.21387004852294922,
+            "std": 0.3813305199146271,
+            "minimum": 0.0,
+            "maximum": 1.0
+        },
+        "share_4": {
+            "mean": 0.22274833917617798,
+            "std": 0.3922572135925293,
+            "minimum": 1.147992438810185e-17,
+            "maximum": 1.0
+        }
+    },
+    "individual_share_attack_results": {
+        "share_1": {
+            "available": true,
+            "checkpoint": "checkpoints/worst_share_privacy/attacker_share_1.pth",
+            "mse": 0.04172816500067711,
+            "rmse": 0.2042747292267869,
+            "mae": 0.1566023826599121,
+            "psnr_db": 13.795707130022262
+        },
+        "share_2": {
+            "available": true,
+            "checkpoint": "checkpoints/worst_share_privacy/attacker_share_2.pth",
+            "mse": 0.027729114517569542,
+            "rmse": 0.16652061289092573,
+            "mae": 0.129118874669075,
+            "psnr_db": 15.57063998661354
+        },
+        "share_3": {
+            "available": true,
+            "checkpoint": "checkpoints/worst_share_privacy/attacker_share_3.pth",
+            "mse": 0.08124546706676483,
+            "rmse": 0.2850359048729911,
+            "mae": 0.22514891624450684,
+            "psnr_db": 10.902008602913371
+        },
+        "share_4": {
+            "available": true,
+            "checkpoint": "checkpoints/worst_share_privacy/attacker_share_4.pth",
+            "mse": 0.034788403660058975,
+            "rmse": 0.18651649701851838,
+            "mae": 0.15115852653980255,
+            "psnr_db": 14.585654993217913
+        }
+    },
+    "files": {
+        "original": "outputs/professor_worst_share_privacy/image_1/original_256x256.png",
+        "reconstructed": "outputs/professor_worst_share_privacy/image_1/reconstructed_256x256.png",
+        "shares": [
+            "outputs/professor_worst_share_privacy/image_1/share_1.png",
+            "outputs/professor_worst_share_privacy/image_1/share_2.png",
+            "outputs/professor_worst_share_privacy/image_1/share_3.png",
+            "outputs/professor_worst_share_privacy/image_1/share_4.png"
+        ],
+        "error_matrix": "outputs/professor_worst_share_privacy/image_1/absolute_error_matrix.npy",
+        "error_heatmap": "outputs/professor_worst_share_privacy/image_1/error_heatmap.png",
+        "comparison": "outputs/professor_worst_share_privacy/image_1/comparison.png"
+    }
+}

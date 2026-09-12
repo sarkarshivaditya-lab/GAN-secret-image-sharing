@@ -1,0 +1,47 @@
+GAN SECRET IMAGE SHARING
+Professor Experiment Report
+
+Input image: data/professor_images/image1.jpeg
+Original dimensions: 839 x 872
+Model dimensions: 256 x 256
+
+Reconstruction metrics
+MSE: 0.00776629
+RMSE: 0.08812655
+MAE: 0.06632703
+PSNR: 21.0979 dB
+SSIM: 0.343070
+Maximum absolute pixel error: 0.50766766
+
+Matrix comparison
+For every RGB pixel:
+E(x,y,c) = |I(x,y,c) - I_hat(x,y,c)|
+Error matrix shape: [3, 256, 256]
+Mean matrix error: 0.06632703
+Maximum matrix error: 0.50766766
+
+Individual-share attacker results
+share_1:
+  Checkpoint: checkpoints/share2_privacy/attacker_share_1.pth
+  MSE: 0.07373635
+  RMSE: 0.27154437
+  MAE: 0.21701308
+  PSNR: 11.3232 dB
+share_2:
+  Checkpoint: checkpoints/share2_privacy/attacker_share_2.pth
+  MSE: 0.07379633
+  RMSE: 0.27165480
+  MAE: 0.21637189
+  PSNR: 11.3197 dB
+share_3:
+  Checkpoint: checkpoints/share2_privacy/attacker_share_3.pth
+  MSE: 0.07490388
+  RMSE: 0.27368574
+  MAE: 0.21821342
+  PSNR: 11.2550 dB
+share_4:
+  Checkpoint: checkpoints/share2_privacy/attacker_share_4.pth
+  MSE: 0.01134783
+  RMSE: 0.10652621
+  MAE: 0.07844138
+  PSNR: 19.4509 dB

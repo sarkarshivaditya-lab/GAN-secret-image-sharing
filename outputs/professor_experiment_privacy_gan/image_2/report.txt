@@ -1,0 +1,31 @@
+GAN SECRET IMAGE SHARING
+Professor Experiment Report
+
+Input image: data/professor_images/image2.jpeg
+Original dimensions: 777 x 769
+Model dimensions: 256 x 256
+
+Reconstruction metrics
+MSE: 0.01071288
+RMSE: 0.10350305
+MAE: 0.05675521
+PSNR: 19.7009 dB
+SSIM: 0.668258
+Maximum absolute pixel error: 0.99522406
+
+Matrix comparison
+For every RGB pixel:
+E(x,y,c) = |I(x,y,c) - I_hat(x,y,c)|
+Error matrix shape: [3, 256, 256]
+Mean matrix error: 0.05675521
+Maximum matrix error: 0.99522406
+
+Individual-share attacker results
+share_1:
+  Attacker unavailable: Attacker evaluation disabled. No --attacker-dir was supplied.
+share_2:
+  Attacker unavailable: Attacker evaluation disabled. No --attacker-dir was supplied.
+share_3:
+  Attacker unavailable: Attacker evaluation disabled. No --attacker-dir was supplied.
+share_4:
+  Attacker unavailable: Attacker evaluation disabled. No --attacker-dir was supplied.

@@ -1,0 +1,89 @@
+{
+    "image_number": 1,
+    "input_path": "data/professor_images/image1.jpeg",
+    "original_dimensions": {
+        "width": 839,
+        "height": 872
+    },
+    "model_dimensions": {
+        "width": 256,
+        "height": 256
+    },
+    "number_of_shares": 4,
+    "reconstruction": {
+        "mse": 0.009764430113136768,
+        "rmse": 0.09881513099286347,
+        "mae": 0.0697065070271492,
+        "psnr_db": 20.103530986067796,
+        "ssim": 0.3587050437927246,
+        "max_absolute_error": 0.6639111638069153
+    },
+    "matrix": {
+        "definition": "E(x,y,c) = |I(x,y,c) - I_hat(x,y,c)|",
+        "shape": [
+            3,
+            256,
+            256
+        ],
+        "mean_absolute_error": 0.0697065070271492,
+        "maximum_absolute_error": 0.6639111638069153,
+        "minimum_absolute_error": 7.152557373046875e-07
+    },
+    "shares": {
+        "share_1": {
+            "mean": 0.22156111896038055,
+            "std": 0.17459550499916077,
+            "minimum": 0.0030164376366883516,
+            "maximum": 0.806026816368103
+        },
+        "share_2": {
+            "mean": 0.3646901845932007,
+            "std": 0.28955399990081787,
+            "minimum": 4.412375801621238e-06,
+            "maximum": 0.9908117055892944
+        },
+        "share_3": {
+            "mean": 0.48395654559135437,
+            "std": 0.4290238618850708,
+            "minimum": 1.721540598964566e-07,
+            "maximum": 0.9999871253967285
+        },
+        "share_4": {
+            "mean": 0.27958694100379944,
+            "std": 0.1952408105134964,
+            "minimum": 0.0001678529952187091,
+            "maximum": 0.8340773582458496
+        }
+    },
+    "individual_share_attack_results": {
+        "share_1": {
+            "available": false,
+            "reason": "Attacker evaluation disabled. No --attacker-dir was supplied."
+        },
+        "share_2": {
+            "available": false,
+            "reason": "Attacker evaluation disabled. No --attacker-dir was supplied."
+        },
+        "share_3": {
+            "available": false,
+            "reason": "Attacker evaluation disabled. No --attacker-dir was supplied."
+        },
+        "share_4": {
+            "available": false,
+            "reason": "Attacker evaluation disabled. No --attacker-dir was supplied."
+        }
+    },
+    "files": {
+        "original": "outputs/professor_experiment_privacy_adversarial/image_1/original_256x256.png",
+        "reconstructed": "outputs/professor_experiment_privacy_adversarial/image_1/reconstructed_256x256.png",
+        "shares": [
+            "outputs/professor_experiment_privacy_adversarial/image_1/share_1.png",
+            "outputs/professor_experiment_privacy_adversarial/image_1/share_2.png",
+            "outputs/professor_experiment_privacy_adversarial/image_1/share_3.png",
+            "outputs/professor_experiment_privacy_adversarial/image_1/share_4.png"
+        ],
+        "error_matrix": "outputs/professor_experiment_privacy_adversarial/image_1/absolute_error_matrix.npy",
+        "error_heatmap": "outputs/professor_experiment_privacy_adversarial/image_1/error_heatmap.png",
+        "comparison": "outputs/professor_experiment_privacy_adversarial/image_1/comparison.png"
+    }
+}
