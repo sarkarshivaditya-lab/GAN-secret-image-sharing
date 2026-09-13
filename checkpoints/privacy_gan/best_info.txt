@@ -1,4 +1,0 @@
-Best epoch: 1
-Best reconstruction PSNR: 32.592668 dB
-Privacy weight: 0.1
-GAN weight: 0.01
