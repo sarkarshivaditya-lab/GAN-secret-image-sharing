@@ -1,563 +1,200 @@
+import argparse
 import math
-import os
+from pathlib import Path
+
 import torch
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Subset
-from torchvision import datasets, transforms
 
-from models.encoder import ShareEncoder
-from models.decoder import ShareDecoder
 from models.attacker import ShareAttacker
-
-
-TRAIN_IMAGES = 5000
-TEST_IMAGES = 1000
-
-BATCH_SIZE = 16
-ATTACKER_EPOCHS = 10
-ATTACKER_LEARNING_RATE = 0.0002
-
-DEVICE = (
-    torch.device("mps")
-    if torch.backends.mps.is_available()
-    else torch.device("cpu")
+from models.decoder import ShareDecoder
+from models.encoder import ShareEncoder
+from project_utils import (
+    NUM_SHARES,
+    build_cifar10_loaders,
+    load_state_dict_compat,
+    save_json,
+    seed_everything,
 )
 
 
 MODELS = {
-    "Baseline": {
-        "encoder": "checkpoints/encoder_baseline.pth",
-        "decoder": "checkpoints/decoder_baseline.pth"
-    },
-    "Lambda 0.10": {
-        "encoder": "checkpoints/privacy_sweep/"
-        "lambda_0.10/encoder.pth",
-        "decoder": "checkpoints/privacy_sweep/"
-        "lambda_0.10/decoder.pth"
-    },
-    "Privacy-GAN": {
-        "encoder": "checkpoints/privacy_gan/"
-        "encoder_best.pth",
-        "decoder": "checkpoints/privacy_gan/"
-        "decoder_best.pth"
-    }
+    "Baseline": (
+        "checkpoints/encoder_baseline.pth",
+        "checkpoints/decoder_baseline.pth",
+    ),
+    "Privacy sweep lambda 0.10": (
+        "checkpoints/privacy_sweep/lambda_0.10/encoder.pth",
+        "checkpoints/privacy_sweep/lambda_0.10/decoder.pth",
+    ),
+    "Privacy-GAN": (
+        "checkpoints/privacy_gan/encoder_best.pth",
+        "checkpoints/privacy_gan/decoder_best.pth",
+    ),
 }
 
 
-def calculate_psnr(
-    original,
-    reconstructed
-):
-    mse = torch.mean(
-        (original - reconstructed) ** 2
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Compare main image-sharing model variants under the same attacker protocol."
     )
+    parser.add_argument("--train-images", type=int, default=5000)
+    parser.add_argument("--test-images", type=int, default=1000)
+    parser.add_argument("--attacker-epochs", type=int, default=10)
+    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--image-size", type=int, default=256)
+    parser.add_argument("--attacker-lr", type=float, default=2e-4)
+    parser.add_argument("--seed", type=int, default=321)
+    parser.add_argument("--data-dir", default="data")
+    parser.add_argument("--output", default="outputs/privacy_model_comparison/results.json")
+    return parser.parse_args()
 
-    if mse.item() == 0:
+
+def psnr_from_mse(mse):
+    if mse <= 0.0:
         return float("inf")
-
-    return 10 * math.log10(
-        1.0 / mse.item()
-    )
+    return 10.0 * math.log10(1.0 / mse)
 
 
-def load_model(
-    encoder_path,
-    decoder_path
-):
-    encoder = ShareEncoder().to(
-        DEVICE
-    )
+def load_models(encoder_path, decoder_path, device):
+    if not Path(encoder_path).exists() or not Path(decoder_path).exists():
+        return None
 
-    decoder = ShareDecoder().to(
-        DEVICE
-    )
-
-    encoder.load_state_dict(
-        torch.load(
-            encoder_path,
-            map_location=DEVICE
-        )
-    )
-
-    decoder.load_state_dict(
-        torch.load(
-            decoder_path,
-            map_location=DEVICE
-        )
-    )
-
+    encoder = ShareEncoder().to(device)
+    decoder = ShareDecoder().to(device)
+    load_state_dict_compat(encoder, encoder_path, device)
+    load_state_dict_compat(decoder, decoder_path, device)
     encoder.eval()
     decoder.eval()
-
-    for parameter in encoder.parameters():
-        parameter.requires_grad = False
-
-    for parameter in decoder.parameters():
-        parameter.requires_grad = False
-
     return encoder, decoder
 
 
-def evaluate_reconstruction(
-    encoder,
-    decoder,
-    test_loader
-):
-    total_loss = 0.0
-    total_psnr = 0.0
-    batches = 0
-
+def reconstruction_metrics(encoder, decoder, loader, device):
+    total_mse = 0.0
+    total_images = 0
     with torch.no_grad():
-        for images, _ in test_loader:
-            images = images.to(
-                DEVICE
-            )
-
-            shares = encoder(
-                images
-            )
-
-            reconstructed = decoder(
-                *shares
-            )
-
-            loss = F.mse_loss(
-                reconstructed,
-                images
-            )
-
-            psnr = calculate_psnr(
-                images,
-                reconstructed
-            )
-
-            total_loss += loss.item()
-            total_psnr += psnr
-            batches += 1
-
-    return (
-        total_loss / batches,
-        total_psnr / batches
-    )
+        for images, _ in loader:
+            images = images.to(device)
+            reconstructed = decoder(*encoder(images))
+            batch_size = images.shape[0]
+            total_mse += F.mse_loss(reconstructed, images).item() * batch_size
+            total_images += batch_size
+    mse = total_mse / total_images
+    return {"mse": mse, "psnr_db": psnr_from_mse(mse)}
 
 
-def train_attacker(
-    encoder,
-    train_loader,
-    share_index
-):
-    attacker = ShareAttacker().to(
-        DEVICE
-    )
+def train_attacker(encoder, loader, share_index, device, epochs, lr):
+    attacker = ShareAttacker().to(device)
+    optimizer = torch.optim.Adam(attacker.parameters(), lr=lr)
 
-    optimizer = torch.optim.Adam(
-        attacker.parameters(),
-        lr=ATTACKER_LEARNING_RATE
-    )
-
-    for epoch in range(
-        ATTACKER_EPOCHS
-    ):
+    for _ in range(epochs):
         attacker.train()
-
-        total_loss = 0.0
-        batches = 0
-
-        for images, _ in train_loader:
-            images = images.to(
-                DEVICE
-            )
-
+        for images, _ in loader:
+            images = images.to(device)
             with torch.no_grad():
-                shares = encoder(
-                    images
-                )
-
-            share = shares[
-                share_index
-            ]
-
-            reconstructed = attacker(
-                share
-            )
-
-            loss = F.mse_loss(
-                reconstructed,
-                images
-            )
-
-            optimizer.zero_grad()
-
+                share = encoder(images)[share_index]
+            reconstructed = attacker(share)
+            loss = F.mse_loss(reconstructed, images)
+            optimizer.zero_grad(set_to_none=True)
             loss.backward()
-
             optimizer.step()
-
-            total_loss += loss.item()
-            batches += 1
 
     return attacker
 
 
-def evaluate_attacker(
-    encoder,
-    attacker,
-    test_loader,
-    share_index
-):
-    encoder.eval()
-    attacker.eval()
-
-    total_loss = 0.0
-    total_psnr = 0.0
-    batches = 0
-
+def attacker_metrics(encoder, attacker, loader, share_index, device):
+    total_mse = 0.0
+    total_images = 0
     with torch.no_grad():
-        for images, _ in test_loader:
-            images = images.to(
-                DEVICE
-            )
-
-            shares = encoder(
-                images
-            )
-
-            share = shares[
-                share_index
-            ]
-
-            reconstructed = attacker(
-                share
-            )
-
-            loss = F.mse_loss(
-                reconstructed,
-                images
-            )
-
-            psnr = calculate_psnr(
-                images,
-                reconstructed
-            )
-
-            total_loss += loss.item()
-            total_psnr += psnr
-            batches += 1
-
-    return (
-        total_loss / batches,
-        total_psnr / batches
-    )
-
-
-def evaluate_model(
-    model_name,
-    model_paths,
-    train_loader,
-    test_loader
-):
-    print()
-    print("=" * 60)
-    print(
-        f"Evaluating: {model_name}"
-    )
-    print("=" * 60)
-
-    encoder, decoder = load_model(
-        model_paths["encoder"],
-        model_paths["decoder"]
-    )
-
-    reconstruction_loss, reconstruction_psnr = (
-        evaluate_reconstruction(
-            encoder,
-            decoder,
-            test_loader
-        )
-    )
-
-    print(
-        f"Reconstruction PSNR: "
-        f"{reconstruction_psnr:.2f} dB"
-    )
-
-    attack_psnrs = []
-
-    for share_index in range(4):
-        print()
-        print(
-            f"Training fresh attacker "
-            f"for Share {share_index + 1}"
-        )
-
-        attacker = train_attacker(
-            encoder,
-            train_loader,
-            share_index
-        )
-
-        attack_loss, attack_psnr = (
-            evaluate_attacker(
-                encoder,
-                attacker,
-                test_loader,
-                share_index
-            )
-        )
-
-        attack_psnrs.append(
-            attack_psnr
-        )
-
-        print(
-            f"Share {share_index + 1} "
-            f"Attack PSNR: "
-            f"{attack_psnr:.2f} dB"
-        )
-
-        del attacker
-
-        if DEVICE.type == "mps":
-            torch.mps.empty_cache()
-
-    average_attack_psnr = (
-        sum(attack_psnrs) / 4.0
-    )
-
-    worst_case_attack_psnr = (
-        max(attack_psnrs)
-    )
-
-    print()
-    print(
-        f"{model_name} average attack PSNR: "
-        f"{average_attack_psnr:.2f} dB"
-    )
-
-    print(
-        f"{model_name} worst-case attack PSNR: "
-        f"{worst_case_attack_psnr:.2f} dB"
-    )
-
-    del encoder
-    del decoder
-
-    if DEVICE.type == "mps":
-        torch.mps.empty_cache()
-
-    return {
-        "reconstruction_loss":
-            reconstruction_loss,
-        "reconstruction_psnr":
-            reconstruction_psnr,
-        "attack_psnrs":
-            attack_psnrs,
-        "average_attack_psnr":
-            average_attack_psnr,
-        "worst_case_attack_psnr":
-            worst_case_attack_psnr
-    }
+        for images, _ in loader:
+            images = images.to(device)
+            share = encoder(images)[share_index]
+            reconstructed = attacker(share)
+            batch_size = images.shape[0]
+            total_mse += F.mse_loss(reconstructed, images).item() * batch_size
+            total_images += batch_size
+    mse = total_mse / total_images
+    return {"mse": mse, "psnr_db": psnr_from_mse(mse)}
 
 
 def main():
-    print("Device:", DEVICE)
-    print()
-    print(
-        "Controlled privacy model benchmark"
-    )
-    print(
-        "Attacker training images:",
-        TRAIN_IMAGES
-    )
-    print(
-        "Attacker test images:",
-        TEST_IMAGES
-    )
-    print(
-        "Attacker epochs:",
-        ATTACKER_EPOCHS
-    )
-    print(
-        "Attacker batch size:",
-        BATCH_SIZE
-    )
-    print()
+    args = parse_args()
+    seed_everything(args.seed)
 
-    transform = transforms.Compose([
-        transforms.Resize(
-            (256, 256)
-        ),
-        transforms.ToTensor()
-    ])
-
-    train_dataset = datasets.CIFAR10(
-        root="data",
-        train=True,
-        download=True,
-        transform=transform
+    device = (
+        torch.device("mps")
+        if torch.backends.mps.is_available()
+        else torch.device("cuda")
+        if torch.cuda.is_available()
+        else torch.device("cpu")
     )
 
-    test_dataset = datasets.CIFAR10(
-        root="data",
-        train=False,
-        download=True,
-        transform=transform
+    train_loader, test_loader = build_cifar10_loaders(
+        data_dir=args.data_dir,
+        train_images=args.train_images,
+        test_images=args.test_images,
+        batch_size=args.batch_size,
+        image_size=args.image_size,
+        seed=args.seed,
     )
 
-    train_dataset = Subset(
-        train_dataset,
-        range(TRAIN_IMAGES)
-    )
+    comparison = {
+        "device": str(device),
+        "train_images": args.train_images,
+        "test_images": args.test_images,
+        "attacker_epochs": args.attacker_epochs,
+        "models": {},
+    }
 
-    test_dataset = Subset(
-        test_dataset,
-        range(TEST_IMAGES)
-    )
+    for name, (encoder_path, decoder_path) in MODELS.items():
+        print(f"\nEvaluating {name}")
+        models = load_models(encoder_path, decoder_path, device)
+        if models is None:
+            print("Checkpoint not available; skipping.")
+            continue
 
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=BATCH_SIZE,
-        shuffle=True,
-        num_workers=0
-    )
+        encoder, decoder = models
+        result = {
+            "encoder": encoder_path,
+            "decoder": decoder_path,
+            "legitimate_reconstruction": reconstruction_metrics(
+                encoder,
+                decoder,
+                test_loader,
+                device,
+            ),
+            "fresh_single_share_attack": {},
+        }
 
-    test_loader = DataLoader(
-        test_dataset,
-        batch_size=BATCH_SIZE,
-        shuffle=False,
-        num_workers=0
-    )
-
-    results = {}
-
-    for model_name, model_paths in MODELS.items():
-        results[model_name] = (
-            evaluate_model(
-                model_name,
-                model_paths,
+        for share_index in range(NUM_SHARES):
+            attacker = train_attacker(
+                encoder,
                 train_loader,
-                test_loader
+                share_index,
+                device,
+                args.attacker_epochs,
+                args.attacker_lr,
             )
-        )
+            result["fresh_single_share_attack"][
+                f"share_{share_index + 1}"
+            ] = attacker_metrics(
+                encoder,
+                attacker,
+                test_loader,
+                share_index,
+                device,
+            )
+            del attacker
 
-    print()
-    print()
-    print("=" * 90)
-    print(
-        "FINAL PRIVACY BENCHMARK"
-    )
-    print("=" * 90)
-
-    print(
-        f"{'Model':<18}"
-        f"{'Recon':>10}"
-        f"{'Share 1':>11}"
-        f"{'Share 2':>11}"
-        f"{'Share 3':>11}"
-        f"{'Share 4':>11}"
-        f"{'Average':>11}"
-        f"{'Worst':>11}"
-    )
-
-    print("-" * 90)
-
-    for model_name, result in results.items():
-        attacks = result[
-            "attack_psnrs"
-        ]
-
+        comparison["models"][name] = result
         print(
-            f"{model_name:<18}"
-            f"{result['reconstruction_psnr']:>10.2f}"
-            f"{attacks[0]:>11.2f}"
-            f"{attacks[1]:>11.2f}"
-            f"{attacks[2]:>11.2f}"
-            f"{attacks[3]:>11.2f}"
-            f"{result['average_attack_psnr']:>11.2f}"
-            f"{result['worst_case_attack_psnr']:>11.2f}"
+            f"Legitimate PSNR: "
+            f"{result['legitimate_reconstruction']['psnr_db']:.3f} dB"
         )
+        for key, metrics in result["fresh_single_share_attack"].items():
+            print(f"{key}: {metrics['psnr_db']:.3f} dB")
 
-    print("=" * 90)
-
-    os.makedirs(
-        "outputs/privacy_benchmark",
-        exist_ok=True
-    )
-
-    results_path = (
-        "outputs/privacy_benchmark/"
-        "benchmark_results.txt"
-    )
-
-    with open(
-        results_path,
-        "w"
-    ) as file:
-        file.write(
-            "Controlled privacy model benchmark\n"
-        )
-
-        file.write(
-            f"Training images: "
-            f"{TRAIN_IMAGES}\n"
-        )
-
-        file.write(
-            f"Test images: "
-            f"{TEST_IMAGES}\n"
-        )
-
-        file.write(
-            f"Attacker epochs: "
-            f"{ATTACKER_EPOCHS}\n"
-        )
-
-        file.write(
-            f"Batch size: "
-            f"{BATCH_SIZE}\n"
-        )
-
-        file.write("\n")
-
-        for model_name, result in results.items():
-            file.write(
-                f"{model_name}\n"
-            )
-
-            file.write(
-                f"Reconstruction PSNR: "
-                f"{result['reconstruction_psnr']:.6f} dB\n"
-            )
-
-            for index, psnr in enumerate(
-                result["attack_psnrs"]
-            ):
-                file.write(
-                    f"Share {index + 1}: "
-                    f"{psnr:.6f} dB\n"
-                )
-
-            file.write(
-                f"Average attack PSNR: "
-                f"{result['average_attack_psnr']:.6f} dB\n"
-            )
-
-            file.write(
-                f"Worst-case attack PSNR: "
-                f"{result['worst_case_attack_psnr']:.6f} dB\n"
-            )
-
-            file.write("\n")
-
-    print()
-    print(
-        f"Benchmark saved to: "
-        f"{results_path}"
-    )
-
-    print()
-    print(
-        "Controlled benchmark complete."
-    )
+    save_json(comparison, args.output)
+    print(f"\nComparison saved to {args.output}")
 
 
 if __name__ == "__main__":
