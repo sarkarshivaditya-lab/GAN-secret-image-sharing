@@ -1,643 +1,435 @@
+import argparse
 import os
-import math
+from pathlib import Path
+
 import torch
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Subset
-from torchvision import datasets, transforms
 
-from models.encoder import ShareEncoder
-from models.decoder import ShareDecoder
 from models.attacker import ShareAttacker
+from models.decoder import ShareDecoder
+from models.encoder import ShareEncoder
 from models.privacy_discriminator import PrivacyDiscriminator
-
-
-TRAIN_IMAGES = 500
-TEST_IMAGES = 100
-
-EPOCHS = 1
-BATCH_SIZE = 8
-
-LEARNING_RATE_GENERATOR = 0.0001
-LEARNING_RATE_ATTACKER = 0.0002
-LEARNING_RATE_DISCRIMINATOR = 0.0002
-
-PRIVACY_WEIGHT = 0.10
-GAN_WEIGHT = 0.01
-
-ATTACKER_STEPS = 2
-
-DEVICE = (
-    torch.device("mps")
-    if torch.backends.mps.is_available()
-    else torch.device("cpu")
+from project_utils import (
+    NUM_SHARES,
+    build_cifar10_loaders,
+    checkpoint_paths,
+    model_parameter_summary,
+    psnr_from_mse,
+    reconstruct,
+    save_csv,
+    save_json,
+    seed_everything,
 )
 
 
-def calculate_psnr(
-    original,
-    reconstructed
-):
-    mse = torch.mean(
-        (original - reconstructed) ** 2
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Train the privacy-aware four-share image-sharing model."
     )
+    parser.add_argument("--train-images", type=int, default=10000)
+    parser.add_argument("--test-images", type=int, default=1000)
+    parser.add_argument("--epochs", type=int, default=30)
+    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--image-size", type=int, default=256)
+    parser.add_argument("--generator-lr", type=float, default=1e-4)
+    parser.add_argument("--attacker-lr", type=float, default=2e-4)
+    parser.add_argument("--discriminator-lr", type=float, default=2e-4)
+    parser.add_argument("--privacy-weight", type=float, default=0.10)
+    parser.add_argument("--gan-weight", type=float, default=0.01)
+    parser.add_argument("--attacker-steps", type=int, default=2)
+    parser.add_argument("--grad-clip", type=float, default=1.0)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--data-dir", default="data")
+    parser.add_argument("--checkpoint-dir", default="checkpoints/privacy_gan")
+    parser.add_argument("--init-checkpoint-dir", default=None)
+    return parser.parse_args()
 
-    if mse.item() == 0:
-        return float("inf")
 
-    return 10 * math.log10(
-        1.0 / mse.item()
-    )
+def set_requires_grad(model, enabled):
+    for parameter in model.parameters():
+        parameter.requires_grad = enabled
 
 
-def create_attackers():
-    return [
-        ShareAttacker().to(DEVICE)
-        for _ in range(4)
-    ]
+def load_optional_initialization(encoder, decoder, args, device):
+    if not args.init_checkpoint_dir:
+        return False
 
+    directory = Path(args.init_checkpoint_dir)
+    encoder_path = directory / "encoder_best.pth"
+    decoder_path = directory / "decoder_best.pth"
 
-def create_attacker_optimizers(
-    attackers
-):
-    return [
-        torch.optim.Adam(
-            attacker.parameters(),
-            lr=LEARNING_RATE_ATTACKER
+    if not encoder_path.exists() or not decoder_path.exists():
+        raise FileNotFoundError(
+            "Initial checkpoint directory must contain encoder_best.pth "
+            "and decoder_best.pth."
         )
+
+    encoder.load_state_dict(
+        torch.load(encoder_path, map_location=device, weights_only=False)
+    )
+    decoder.load_state_dict(
+        torch.load(decoder_path, map_location=device, weights_only=False)
+    )
+    return True
+
+
+def create_attackers(device, lr):
+    attackers = [ShareAttacker().to(device) for _ in range(NUM_SHARES)]
+    optimizers = [
+        torch.optim.Adam(attacker.parameters(), lr=lr)
         for attacker in attackers
     ]
+    return attackers, optimizers
 
 
-def freeze_attackers(attackers):
-    for attacker in attackers:
-        for parameter in attacker.parameters():
-            parameter.requires_grad = False
-
-
-def unfreeze_attackers(attackers):
-    for attacker in attackers:
-        for parameter in attacker.parameters():
-            parameter.requires_grad = True
-
-
-def train_attackers(
-    encoder,
-    attackers,
-    optimizers,
-    images
-):
+def train_attackers(encoder, attackers, optimizers, images, steps):
     encoder.eval()
-
     with torch.no_grad():
         shares = encoder(images)
 
     total_loss = 0.0
-
-    for share_index in range(4):
+    for share_index in range(NUM_SHARES):
         attacker = attackers[share_index]
         optimizer = optimizers[share_index]
+        attacker.train()
 
-        for _ in range(ATTACKER_STEPS):
-            attacked = attacker(
-                shares[share_index]
-            )
-
-            loss = F.mse_loss(
-                attacked,
-                images
-            )
-
-            optimizer.zero_grad()
+        for _ in range(steps):
+            attacked = attacker(shares[share_index])
+            loss = F.mse_loss(attacked, images)
+            optimizer.zero_grad(set_to_none=True)
             loss.backward()
             optimizer.step()
-
             total_loss += loss.item()
 
-    return total_loss / (
-        4 * ATTACKER_STEPS
-    )
+    return total_loss / (NUM_SHARES * steps)
 
 
-def train_discriminator(
-    discriminator,
-    optimizer,
-    images,
-    shares
-):
+def train_privacy_discriminator(discriminator, optimizer, images, shares):
     discriminator.train()
-
     total_loss = 0.0
     total_correct = 0
     total_examples = 0
 
     for share in shares:
         batch_size = images.shape[0]
+        permutation = torch.randperm(batch_size, device=images.device)
+        mismatched_images = images[permutation]
 
-        permutation = torch.randperm(
-            batch_size,
-            device=DEVICE
+        positive_logits = discriminator(images, share.detach())
+        negative_logits = discriminator(mismatched_images, share.detach())
+
+        positive_targets = torch.ones_like(positive_logits)
+        negative_targets = torch.zeros_like(negative_logits)
+
+        positive_loss = F.binary_cross_entropy_with_logits(
+            positive_logits,
+            positive_targets
         )
-
-        mismatched_images = images[
-            permutation
-        ]
-
-        positive_logits = discriminator(
-            images,
-            share.detach()
+        negative_loss = F.binary_cross_entropy_with_logits(
+            negative_logits,
+            negative_targets
         )
+        loss = 0.5 * (positive_loss + negative_loss)
 
-        negative_logits = discriminator(
-            mismatched_images,
-            share.detach()
-        )
-
-        positive_targets = torch.ones_like(
-            positive_logits
-        )
-
-        negative_targets = torch.zeros_like(
-            negative_logits
-        )
-
-        positive_loss = (
-            F.binary_cross_entropy_with_logits(
-                positive_logits,
-                positive_targets
-            )
-        )
-
-        negative_loss = (
-            F.binary_cross_entropy_with_logits(
-                negative_logits,
-                negative_targets
-            )
-        )
-
-        loss = (
-            positive_loss +
-            negative_loss
-        ) * 0.5
-
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
         loss.backward()
         optimizer.step()
 
         total_loss += loss.item()
-
-        positive_predictions = (
-            torch.sigmoid(
-                positive_logits
-            ) >= 0.5
-        )
-
-        negative_predictions = (
-            torch.sigmoid(
-                negative_logits
-            ) < 0.5
-        )
-
         total_correct += (
-            positive_predictions.sum().item()
-            +
-            negative_predictions.sum().item()
+            (positive_logits >= 0).sum().item()
+            + (negative_logits < 0).sum().item()
         )
+        total_examples += 2 * batch_size
 
-        total_examples += (
-            2 * batch_size
-        )
-
-    return (
-        total_loss / 4.0,
-        total_correct / total_examples
-    )
+    return total_loss / NUM_SHARES, total_correct / total_examples
 
 
-def generator_privacy_loss(
-    discriminator,
-    images,
-    shares
-):
+def calculate_generator_privacy_loss(discriminator, images, shares):
     total_loss = 0.0
-
     for share in shares:
-        positive_logits = discriminator(
-            images,
-            share
-        )
-
-        targets = torch.zeros_like(
-            positive_logits
-        )
-
-        total_loss += (
-            F.binary_cross_entropy_with_logits(
-                positive_logits,
-                targets
-            )
-        )
-
-    return total_loss / 4.0
+        logits = discriminator(images, share)
+        targets = torch.zeros_like(logits)
+        total_loss += F.binary_cross_entropy_with_logits(logits, targets)
+    return total_loss / NUM_SHARES
 
 
-def evaluate(
-    encoder,
-    decoder,
-    test_loader
-):
+def evaluate_reconstruction(encoder, decoder, loader, device):
     encoder.eval()
     decoder.eval()
-
-    total_loss = 0.0
-    total_psnr = 0.0
-    batches = 0
+    total_mse = 0.0
+    total_images = 0
 
     with torch.no_grad():
-        for images, _ in test_loader:
-            images = images.to(DEVICE)
-
+        for images, _ in loader:
+            images = images.to(device)
             shares = encoder(images)
+            reconstructed = reconstruct(decoder, shares)
+            batch_size = images.shape[0]
+            total_mse += F.mse_loss(reconstructed, images).item() * batch_size
+            total_images += batch_size
 
-            reconstructed = decoder(
-                *shares
-            )
+    mse = total_mse / total_images
+    return mse, psnr_from_mse(mse)
 
-            loss = F.mse_loss(
-                reconstructed,
-                images
-            )
 
-            psnr = calculate_psnr(
-                images,
-                reconstructed
-            )
+def save_best(encoder, decoder, discriminator, epoch, validation_mse, validation_psnr, args, device):
+    directory = Path(args.checkpoint_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    paths = checkpoint_paths(directory)
 
-            total_loss += loss.item()
-            total_psnr += psnr
-            batches += 1
+    torch.save(encoder.state_dict(), paths["encoder"])
+    torch.save(decoder.state_dict(), paths["decoder"])
+    torch.save(discriminator.state_dict(), paths["discriminator"])
 
-    return (
-        total_loss / batches,
-        total_psnr / batches
-    )
+    metadata = {
+        "experiment": "privacy_gan",
+        "best_epoch": epoch,
+        "validation_mse": validation_mse,
+        "validation_psnr_db": validation_psnr,
+        "device": str(device),
+        "train_images": args.train_images,
+        "test_images": args.test_images,
+        "epochs": args.epochs,
+        "batch_size": args.batch_size,
+        "image_size": args.image_size,
+        "generator_lr": args.generator_lr,
+        "attacker_lr": args.attacker_lr,
+        "discriminator_lr": args.discriminator_lr,
+        "privacy_weight": args.privacy_weight,
+        "gan_weight": args.gan_weight,
+        "attacker_steps": args.attacker_steps,
+        "seed": args.seed,
+        "init_checkpoint_dir": args.init_checkpoint_dir,
+        "parameter_counts": model_parameter_summary(
+            encoder,
+            decoder,
+            ShareAttacker().to(device),
+            discriminator,
+        ),
+    }
+    save_json(metadata, paths["metadata"])
 
 
 def main():
-    print("Device:", DEVICE)
-    print()
-    print("Privacy GAN integration test")
-    print(
-        "Training images:",
-        TRAIN_IMAGES
+    args = parse_args()
+    if args.epochs < 1 or args.attacker_steps < 1:
+        raise ValueError("epochs and attacker-steps must be positive.")
+
+    seed_everything(args.seed)
+    device = (
+        torch.device("mps")
+        if torch.backends.mps.is_available()
+        else torch.device("cuda")
+        if torch.cuda.is_available()
+        else torch.device("cpu")
     )
-    print(
-        "Test images:",
-        TEST_IMAGES
-    )
-    print(
-        "Epochs:",
-        EPOCHS
-    )
-    print(
-        "Batch size:",
-        BATCH_SIZE
-    )
-    print(
-        "Privacy weight:",
-        PRIVACY_WEIGHT
-    )
-    print(
-        "GAN weight:",
-        GAN_WEIGHT
-    )
+
+    print(f"Device: {device}")
+    print("Privacy-GAN training")
+    print(f"Train images: {args.train_images}")
+    print(f"Test images: {args.test_images}")
+    print(f"Epochs: {args.epochs}")
+    print(f"Batch size: {args.batch_size}")
+    print(f"Privacy weight: {args.privacy_weight}")
+    print(f"GAN weight: {args.gan_weight}")
     print()
 
-    transform = transforms.Compose([
-        transforms.Resize((256, 256)),
-        transforms.ToTensor()
-    ])
-
-    train_dataset = datasets.CIFAR10(
-        root="data",
-        train=True,
-        download=True,
-        transform=transform
+    train_loader, test_loader = build_cifar10_loaders(
+        data_dir=args.data_dir,
+        train_images=args.train_images,
+        test_images=args.test_images,
+        batch_size=args.batch_size,
+        image_size=args.image_size,
+        seed=args.seed,
     )
 
-    test_dataset = datasets.CIFAR10(
-        root="data",
-        train=False,
-        download=True,
-        transform=transform
+    encoder = ShareEncoder().to(device)
+    decoder = ShareDecoder().to(device)
+    discriminator = PrivacyDiscriminator().to(device)
+
+    initialized = load_optional_initialization(
+        encoder,
+        decoder,
+        args,
+        device,
     )
+    if initialized:
+        print(f"Initialized from: {args.init_checkpoint_dir}")
+    else:
+        print("Initialized from scratch")
 
-    train_dataset = Subset(
-        train_dataset,
-        range(TRAIN_IMAGES)
-    )
-
-    test_dataset = Subset(
-        test_dataset,
-        range(TEST_IMAGES)
-    )
-
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=BATCH_SIZE,
-        shuffle=True,
-        num_workers=0
-    )
-
-    test_loader = DataLoader(
-        test_dataset,
-        batch_size=BATCH_SIZE,
-        shuffle=False,
-        num_workers=0
-    )
-
-    encoder = ShareEncoder().to(DEVICE)
-    decoder = ShareDecoder().to(DEVICE)
-
-    encoder.load_state_dict(
-        torch.load(
-            "checkpoints/privacy_sweep/"
-            "lambda_0.10/encoder.pth",
-            map_location=DEVICE
-        )
-    )
-
-    decoder.load_state_dict(
-        torch.load(
-            "checkpoints/privacy_sweep/"
-            "lambda_0.10/decoder.pth",
-            map_location=DEVICE
-        )
-    )
-
-    attackers = create_attackers()
-
-    attacker_optimizers = (
-        create_attacker_optimizers(
-            attackers
-        )
-    )
-
-    discriminator = (
-        PrivacyDiscriminator()
-        .to(DEVICE)
+    attackers, attacker_optimizers = create_attackers(
+        device,
+        args.attacker_lr,
     )
 
     generator_optimizer = torch.optim.Adam(
-        list(encoder.parameters()) +
-        list(decoder.parameters()),
-        lr=LEARNING_RATE_GENERATOR
+        list(encoder.parameters()) + list(decoder.parameters()),
+        lr=args.generator_lr,
+    )
+    discriminator_optimizer = torch.optim.Adam(
+        discriminator.parameters(),
+        lr=args.discriminator_lr,
     )
 
-    discriminator_optimizer = (
-        torch.optim.Adam(
-            discriminator.parameters(),
-            lr=LEARNING_RATE_DISCRIMINATOR
-        )
-    )
+    best_psnr = float("-inf")
+    history = []
 
-    for epoch in range(EPOCHS):
+    for epoch in range(1, args.epochs + 1):
         encoder.train()
         decoder.train()
 
-        reconstruction_total = 0.0
-        attack_total = 0.0
-        privacy_total = 0.0
-        discriminator_total = 0.0
-        discriminator_accuracy_total = 0.0
-
+        totals = {
+            "reconstruction": 0.0,
+            "attack": 0.0,
+            "privacy": 0.0,
+            "discriminator": 0.0,
+            "discriminator_accuracy": 0.0,
+            "generator": 0.0,
+        }
         batches = 0
 
-        for batch_index, (
-            images,
-            _
-        ) in enumerate(train_loader):
-
-            images = images.to(DEVICE)
+        for batch_index, (images, _) in enumerate(train_loader, start=1):
+            images = images.to(device)
 
             train_attackers(
                 encoder,
                 attackers,
                 attacker_optimizers,
-                images
+                images,
+                args.attacker_steps,
             )
 
-            shares = encoder(
-                images
-            )
-
-            discriminator_loss_value, discriminator_accuracy = (
-                train_discriminator(
+            shares = encoder(images)
+            discriminator_loss, discriminator_accuracy = (
+                train_privacy_discriminator(
                     discriminator,
                     discriminator_optimizer,
                     images,
-                    shares
+                    shares,
                 )
             )
 
-            shares = encoder(
-                images
-            )
+            shares = encoder(images)
+            reconstructed = reconstruct(decoder, shares)
+            reconstruction_loss = F.mse_loss(reconstructed, images)
 
-            reconstructed = decoder(
-                *shares
-            )
+            attack_loss = 0.0
+            for share_index, attacker in enumerate(attackers):
+                attacker.eval()
+                attacked = attacker(shares[share_index])
+                attack_loss = attack_loss + F.mse_loss(attacked, images)
+            attack_loss = attack_loss / NUM_SHARES
 
-            reconstruction_loss = F.mse_loss(
-                reconstructed,
-                images
-            )
+            set_requires_grad(discriminator, False)
+            discriminator.eval()
+            for attacker in attackers:
+                set_requires_grad(attacker, False)
+                attacker.eval()
 
-            total_attack_loss = 0.0
-
-            for share_index in range(4):
-                attacked = attackers[
-                    share_index
-                ](
-                    shares[share_index]
-                )
-
-                total_attack_loss += (
-                    F.mse_loss(
-                        attacked,
-                        images
-                    )
-                )
-
-            average_attack_loss = (
-                total_attack_loss / 4.0
-            )
-
-            freeze_attackers(
-                attackers
-            )
-
-            privacy_loss = (
-                generator_privacy_loss(
-                    discriminator,
-                    images,
-                    shares
-                )
+            privacy_loss = calculate_generator_privacy_loss(
+                discriminator,
+                images,
+                shares,
             )
 
             generator_loss = (
                 reconstruction_loss
-                -
-                PRIVACY_WEIGHT *
-                average_attack_loss
-                +
-                GAN_WEIGHT *
-                privacy_loss
+                - args.privacy_weight * attack_loss
+                + args.gan_weight * privacy_loss
             )
 
-            generator_optimizer.zero_grad()
-
+            generator_optimizer.zero_grad(set_to_none=True)
             generator_loss.backward()
-
+            torch.nn.utils.clip_grad_norm_(
+                list(encoder.parameters()) + list(decoder.parameters()),
+                args.grad_clip,
+            )
             generator_optimizer.step()
 
-            unfreeze_attackers(
-                attackers
-            )
+            set_requires_grad(discriminator, True)
+            for attacker in attackers:
+                set_requires_grad(attacker, True)
 
-            reconstruction_total += (
-                reconstruction_loss.item()
-            )
-
-            attack_total += (
-                average_attack_loss.item()
-            )
-
-            privacy_total += (
-                privacy_loss.item()
-            )
-
-            discriminator_total += (
-                discriminator_loss_value
-            )
-
-            discriminator_accuracy_total += (
-                discriminator_accuracy
-            )
-
+            totals["reconstruction"] += reconstruction_loss.item()
+            totals["attack"] += attack_loss.item()
+            totals["privacy"] += privacy_loss.item()
+            totals["discriminator"] += discriminator_loss
+            totals["discriminator_accuracy"] += discriminator_accuracy
+            totals["generator"] += generator_loss.item()
             batches += 1
 
-            if batch_index % 25 == 0:
-                print()
+            if batch_index == 1 or batch_index % 100 == 0:
                 print(
-                    f"Epoch [{epoch + 1}/{EPOCHS}] "
-                    f"Batch "
-                    f"[{batch_index}/{len(train_loader)}]"
+                    f"Epoch {epoch}/{args.epochs} | "
+                    f"Batch {batch_index}/{len(train_loader)} | "
+                    f"Recon {reconstruction_loss.item():.6f} | "
+                    f"Attack {attack_loss.item():.6f} | "
+                    f"Privacy {privacy_loss.item():.6f} | "
+                    f"D {discriminator_loss:.6f} | "
+                    f"D-acc {discriminator_accuracy * 100:.2f}%"
                 )
 
-                print(
-                    f"Reconstruction Loss: "
-                    f"{reconstruction_loss.item():.6f}"
-                )
-
-                print(
-                    f"Attack Loss: "
-                    f"{average_attack_loss.item():.6f}"
-                )
-
-                print(
-                    f"Privacy GAN Loss: "
-                    f"{privacy_loss.item():.6f}"
-                )
-
-                print(
-                    f"Discriminator Loss: "
-                    f"{discriminator_loss_value:.6f}"
-                )
-
-                print(
-                    f"Discriminator Accuracy: "
-                    f"{discriminator_accuracy * 100:.2f}%"
-                )
-
-        validation_loss, validation_psnr = (
-            evaluate(
-                encoder,
-                decoder,
-                test_loader
-            )
+        validation_mse, validation_psnr = evaluate_reconstruction(
+            encoder,
+            decoder,
+            test_loader,
+            device,
         )
+
+        row = {
+            "epoch": epoch,
+            "train_reconstruction_loss": totals["reconstruction"] / batches,
+            "train_attack_loss": totals["attack"] / batches,
+            "train_privacy_loss": totals["privacy"] / batches,
+            "train_discriminator_loss": totals["discriminator"] / batches,
+            "train_discriminator_accuracy": totals["discriminator_accuracy"] / batches,
+            "train_generator_loss": totals["generator"] / batches,
+            "validation_mse": validation_mse,
+            "validation_psnr_db": validation_psnr,
+        }
+        history.append(row)
 
         print()
-        print("=" * 60)
-
         print(
-            f"Epoch [{epoch + 1}/{EPOCHS}]"
+            f"Epoch {epoch}/{args.epochs} | "
+            f"Validation MSE {validation_mse:.6f} | "
+            f"Validation PSNR {validation_psnr:.3f} dB"
         )
 
-        print(
-            f"Train Reconstruction Loss: "
-            f"{reconstruction_total / batches:.6f}"
-        )
+        if validation_psnr > best_psnr:
+            best_psnr = validation_psnr
+            save_best(
+                encoder,
+                decoder,
+                discriminator,
+                epoch,
+                validation_mse,
+                validation_psnr,
+                args,
+                device,
+            )
+            print(f"Saved new best checkpoint: {best_psnr:.3f} dB")
 
-        print(
-            f"Train Attack Loss: "
-            f"{attack_total / batches:.6f}"
-        )
+        print()
 
-        print(
-            f"Train Privacy GAN Loss: "
-            f"{privacy_total / batches:.6f}"
-        )
-
-        print(
-            f"Train Discriminator Loss: "
-            f"{discriminator_total / batches:.6f}"
-        )
-
-        print(
-            f"Train Discriminator Accuracy: "
-            f"{100 * discriminator_accuracy_total / batches:.2f}%"
-        )
-
-        print(
-            f"Validation Reconstruction Loss: "
-            f"{validation_loss:.6f}"
-        )
-
-        print(
-            f"Validation Reconstruction PSNR: "
-            f"{validation_psnr:.2f} dB"
-        )
-
-        print("=" * 60)
-
-    os.makedirs(
-        "checkpoints/privacy_gan",
-        exist_ok=True
+    save_csv(
+        history,
+        Path(args.checkpoint_dir) / "training_log.csv",
+    )
+    save_json(
+        {
+            "experiment": "privacy_gan",
+            "best_validation_psnr_db": best_psnr,
+            "history": history,
+        },
+        Path(args.checkpoint_dir) / "training_history.json",
     )
 
-    torch.save(
-        encoder.state_dict(),
-        "checkpoints/privacy_gan/"
-        "encoder_test.pth"
-    )
-
-    torch.save(
-        decoder.state_dict(),
-        "checkpoints/privacy_gan/"
-        "decoder_test.pth"
-    )
-
-    torch.save(
-        discriminator.state_dict(),
-        "checkpoints/privacy_gan/"
-        "discriminator_test.pth"
-    )
-
-    print()
-    print(
-        "Privacy GAN integration test complete."
-    )
+    print("Training complete.")
+    print(f"Best validation PSNR: {best_psnr:.3f} dB")
+    print(f"Checkpoints: {args.checkpoint_dir}")
 
 
 if __name__ == "__main__":
