@@ -1,0 +1,239 @@
+# GAN-Based Secret Image Sharing with Privacy-Aware Learning
+
+A research prototype for learned multi-share image representation, reconstruction, and privacy evaluation using convolutional neural networks and adversarial objectives.
+
+The maintained system uses a four-share encoder and a four-share decoder. A source image is transformed into four learned shares, and the decoder reconstructs the image when all four shares are supplied. Privacy-aware training uses independent single-share reconstruction attackers and a privacy discriminator.
+
+This is an empirical machine-learning research prototype. It is not a cryptographic secret-sharing scheme and does not currently provide a formal secrecy or threshold-security guarantee.
+
+## Research objective
+
+The main question is whether a learned image-sharing model can preserve high-quality reconstruction from all four shares while reducing recoverable source information from any individual share.
+
+The project therefore measures:
+
+- Legitimate reconstruction quality from all four shares.
+- Reconstruction quality obtainable from each individual share by a fresh attacker.
+- Partial-share reconstruction as a diagnostic.
+- Per-share entropy.
+- Cross-share correlation.
+- Privacy-discriminator performance.
+
+## Architecture
+
+### Encoder
+
+`models/encoder.py` maps a three-channel 256 × 256 image through convolutional feature extraction and produces four independent three-channel share tensors.
+
+### Decoder
+
+`models/decoder.py` concatenates the four shares into a 12-channel representation and reconstructs the image through convolutional and transposed-convolutional layers.
+
+The current decoder expects all four shares. Consequently, the present system should be described as a four-share learned reconstruction model, not as a formal `(k, n)` threshold scheme.
+
+### Single-share attacker
+
+`models/attacker.py` reconstructs an image from one share. During Privacy-GAN training, one attacker is maintained for each share. During final evaluation, fresh attackers are initialized from scratch and trained against the frozen encoder outputs.
+
+The fresh-attacker experiment is the main empirical privacy test because it avoids evaluating privacy only against the adversary that participated in training.
+
+### Privacy discriminator
+
+`models/privacy_discriminator.py` receives an image and a share and predicts whether they are a matched pair. The discriminator learns to recognize matched and mismatched pairs, while the encoder is trained adversarially to make source-share association harder.
+
+## Privacy-GAN objective
+
+The maintained generator objective is:
+
+`reconstruction loss - privacy weight × attacker reconstruction loss + GAN weight × privacy discriminator loss`
+
+Reconstruction preserves legitimate utility. The attacker term discourages information that enables single-share image reconstruction. The discriminator term discourages direct association between an individual share and its source image.
+
+The training implementation also freezes the attacker and discriminator parameters during the generator update while keeping their computation graph available for gradients with respect to the shares. Their running-state updates are disabled during that phase.
+
+## Maintained training pipeline
+
+The primary training entry point is:
+
+`training/train_privacy_gan.py`
+
+Example:
+
+```bash
+python training/train_privacy_gan.py \
+  --train-images 10000 \
+  --test-images 1000 \
+  --epochs 30 \
+  --batch-size 8 \
+  --privacy-weight 0.10 \
+  --gan-weight 0.01
+```
+
+The pipeline is configurable from the command line. It records configuration, validation metrics, parameter counts, best epoch, and training history.
+
+A previous experiment can optionally be used to initialize the encoder and decoder:
+
+```bash
+python training/train_privacy_gan.py \
+  --init-checkpoint-dir checkpoints/privacy_sweep/lambda_0.10
+```
+
+Fresh initialization is the default, preventing accidental dependence on an older experiment.
+
+## Evaluation
+
+Run:
+
+```bash
+python evaluation/evaluate_privacy_gan.py
+```
+
+For the standard independent-attacker evaluation:
+
+```bash
+python evaluation/evaluate_privacy_gan.py \
+  --attacker-train-images 5000 \
+  --test-images 1000 \
+  --attacker-epochs 10
+```
+
+The evaluator loads:
+
+`checkpoints/privacy_gan/encoder_best.pth`
+
+`checkpoints/privacy_gan/decoder_best.pth`
+
+It then evaluates legitimate reconstruction, trains four fresh attackers, evaluates each attacker on held-out data, measures share statistics, evaluates the saved privacy discriminator when available, and writes JSON and text reports.
+
+Results are written to:
+
+`outputs/privacy_gan/results.json`
+
+`outputs/privacy_gan/results.txt`
+
+## Visual evidence
+
+The evaluator automatically creates:
+
+`outputs/privacy_gan/visuals/full_reconstruction_grid.png`
+
+This contains the original image, Share 1, Share 2, Share 3, Share 4, and the legitimate reconstruction.
+
+`outputs/privacy_gan/visuals/fresh_attacker_grid.png`
+
+This contains reconstructions generated by fresh attackers using individual shares.
+
+The visual pipeline fixes an important omission in earlier experiments where reconstructed tensors were evaluated numerically but not persisted as image artifacts.
+
+## Training plots
+
+Training history is stored in:
+
+`checkpoints/privacy_gan/training_log.csv`
+
+Generate plots with:
+
+```bash
+python evaluation/plot_privacy_gan_history.py
+```
+
+Plots are written to:
+
+`outputs/privacy_gan/training_plots/`
+
+## Architecture smoke test
+
+Before starting a long run:
+
+```bash
+python scripts/validate_project.py
+```
+
+The smoke test checks the encoder share count and shapes, decoder output shape, attacker output shape, privacy-discriminator output shape, installed PyTorch version, and selected compute device.
+
+## Dataset
+
+The current implementation uses CIFAR-10 through `torchvision`. Images are resized to 256 × 256 and converted to tensors.
+
+The dataset is downloaded automatically into `data/` when required.
+
+CIFAR-10 is suitable for controlled prototype experiments but is not sufficient to establish generalization to arbitrary high-resolution or domain-specific imagery.
+
+## Checkpoints
+
+Model weights use Git LFS. The repository tracks `.pth` files through `.gitattributes`.
+
+A training clone should have Git LFS installed before using repository checkpoints.
+
+The maintained Privacy-GAN checkpoint directory contains the best encoder, decoder, and privacy discriminator together with machine-readable experiment metadata and training history.
+
+## Existing experiments
+
+The repository also contains earlier experiments for baseline reconstruction, standard GAN training, adversarial training, GAN-weight sweeps, privacy-weight sweeps, balanced/static shares, privacy-adversarial training, and attacker evaluation.
+
+These are retained as research history. The maintained Privacy-GAN workflow is centered on:
+
+`training/train_privacy_gan.py`
+
+`evaluation/evaluate_privacy_gan.py`
+
+`evaluation/plot_privacy_gan_history.py`
+
+`project_utils.py`
+
+and the four model files used by the Privacy-GAN experiment.
+
+## Previous Privacy-GAN result
+
+An earlier checkpoint recorded a best reconstruction PSNR of 32.592668 dB at epoch 1 with privacy weight 0.10 and GAN weight 0.01.
+
+That number is a historical prototype result, not a final benchmark. The maintained training pipeline now records enough metadata and history to distinguish future experiments and reproduce their settings.
+
+## Scientific limitations
+
+The project currently does not establish:
+
+- Information-theoretic secrecy.
+- Computational indistinguishability.
+- Differential privacy.
+- A formally proven `(k, n)` threshold property.
+- Security against every possible inversion or inference attack.
+
+A low single-share attacker PSNR means that the evaluated attacker reconstructed the source poorly. It does not prove that the share contains no useful information.
+
+The strongest next evaluations are therefore fresh and stronger attackers, multiple random seeds, larger datasets, perceptual metrics, and explicit threat-model experiments. If formal threshold recovery is required, the learned representation will also need to be redesigned or coupled to a formally defined threshold mechanism.
+
+## Reproducibility
+
+The maintained training pipeline records dataset sizes, image resolution, batch size, learning rates, privacy and GAN weights, attacker steps, random seed, initialization source, best validation epoch, best validation PSNR, parameter counts, and epoch-level training history.
+
+Best-model metadata is stored in:
+
+`checkpoints/privacy_gan/best_info.json`
+
+## Repository layout
+
+```text
+GAN-secret-image-sharing/
+├── models/
+├── training/
+├── evaluation/
+├── scripts/
+├── checkpoints/
+├── outputs/
+├── data/
+├── project_utils.py
+├── requirements.txt
+└── README.md
+```
+
+## Recommended research workflow
+
+1. Run `python scripts/validate_project.py`.
+2. Train the maintained Privacy-GAN pipeline with a controlled configuration.
+3. Keep the generated `best_info.json` and `training_log.csv` with the checkpoint.
+4. Run `evaluation/evaluate_privacy_gan.py`.
+5. Inspect both numerical results and saved visual grids.
+6. Generate training plots.
+7. Repeat important experiments with multiple random seeds.
+8. Compare the resulting Privacy-GAN model against the existing baseline and adversarial variants before making a research claim.
