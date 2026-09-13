@@ -1,0 +1,9 @@
+{
+  "experiment": "privacy_gan",
+  "status": "historical_checkpoint_metadata",
+  "best_epoch": 1,
+  "validation_psnr_db": 32.592668,
+  "privacy_weight": 0.1,
+  "gan_weight": 0.01,
+  "note": "Historical result retained for provenance. Re-run training with the maintained pipeline before treating performance as a current benchmark."
+}
