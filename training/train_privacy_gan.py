@@ -53,35 +53,37 @@ def set_requires_grad(model, enabled):
         parameter.requires_grad = enabled
 
 
+def load_checkpoint_state(path, device):
+    return torch.load(path, map_location=device, weights_only=False)
+
+
 def load_optional_initialization(encoder, decoder, args, device):
     if not args.init_checkpoint_dir:
         return False
 
     directory = Path(args.init_checkpoint_dir)
-    encoder_path = directory / "encoder_best.pth"
-    decoder_path = directory / "decoder_best.pth"
+    encoder_candidates = [directory / "encoder_best.pth", directory / "encoder.pth"]
+    decoder_candidates = [directory / "decoder_best.pth", directory / "decoder.pth"]
 
-    if not encoder_path.exists() or not decoder_path.exists():
+    encoder_path = next((path for path in encoder_candidates if path.exists()), None)
+    decoder_path = next((path for path in decoder_candidates if path.exists()), None)
+
+    if encoder_path is None or decoder_path is None:
         raise FileNotFoundError(
-            "Initial checkpoint directory must contain encoder_best.pth "
-            "and decoder_best.pth."
+            "Initial checkpoint directory must contain encoder_best.pth/decoder_best.pth "
+            "or the legacy encoder.pth/decoder.pth pair."
         )
 
-    encoder.load_state_dict(
-        torch.load(encoder_path, map_location=device, weights_only=False)
-    )
-    decoder.load_state_dict(
-        torch.load(decoder_path, map_location=device, weights_only=False)
-    )
+    encoder.load_state_dict(load_checkpoint_state(encoder_path, device))
+    decoder.load_state_dict(load_checkpoint_state(decoder_path, device))
+    print(f"Loaded encoder: {encoder_path}")
+    print(f"Loaded decoder: {decoder_path}")
     return True
 
 
 def create_attackers(device, lr):
     attackers = [ShareAttacker().to(device) for _ in range(NUM_SHARES)]
-    optimizers = [
-        torch.optim.Adam(attacker.parameters(), lr=lr)
-        for attacker in attackers
-    ]
+    optimizers = [torch.optim.Adam(attacker.parameters(), lr=lr) for attacker in attackers]
     return attackers, optimizers
 
 
@@ -91,19 +93,15 @@ def train_attackers(encoder, attackers, optimizers, images, steps):
         shares = encoder(images)
 
     total_loss = 0.0
-    for share_index in range(NUM_SHARES):
-        attacker = attackers[share_index]
-        optimizer = optimizers[share_index]
+    for share_index, attacker in enumerate(attackers):
         attacker.train()
-
         for _ in range(steps):
             attacked = attacker(shares[share_index])
             loss = F.mse_loss(attacked, images)
-            optimizer.zero_grad(set_to_none=True)
+            optimizers[share_index].zero_grad(set_to_none=True)
             loss.backward()
-            optimizer.step()
+            optimizers[share_index].step()
             total_loss += loss.item()
-
     return total_loss / (NUM_SHARES * steps)
 
 
@@ -120,18 +118,11 @@ def train_privacy_discriminator(discriminator, optimizer, images, shares):
 
         positive_logits = discriminator(images, share.detach())
         negative_logits = discriminator(mismatched_images, share.detach())
-
         positive_targets = torch.ones_like(positive_logits)
         negative_targets = torch.zeros_like(negative_logits)
 
-        positive_loss = F.binary_cross_entropy_with_logits(
-            positive_logits,
-            positive_targets,
-        )
-        negative_loss = F.binary_cross_entropy_with_logits(
-            negative_logits,
-            negative_targets,
-        )
+        positive_loss = F.binary_cross_entropy_with_logits(positive_logits, positive_targets)
+        negative_loss = F.binary_cross_entropy_with_logits(negative_logits, negative_targets)
         loss = 0.5 * (positive_loss + negative_loss)
 
         optimizer.zero_grad(set_to_none=True)
@@ -139,10 +130,8 @@ def train_privacy_discriminator(discriminator, optimizer, images, shares):
         optimizer.step()
 
         total_loss += loss.item()
-        total_correct += (
-            (positive_logits >= 0).sum().item()
-            + (negative_logits < 0).sum().item()
-        )
+        total_correct += (positive_logits >= 0).sum().item()
+        total_correct += (negative_logits < 0).sum().item()
         total_examples += 2 * batch_size
 
     return total_loss / NUM_SHARES, total_correct / total_examples
@@ -152,8 +141,7 @@ def calculate_generator_privacy_loss(discriminator, images, shares):
     total_loss = 0.0
     for share in shares:
         logits = discriminator(images, share)
-        targets = torch.zeros_like(logits)
-        total_loss += F.binary_cross_entropy_with_logits(logits, targets)
+        total_loss += F.binary_cross_entropy_with_logits(logits, torch.zeros_like(logits))
     return total_loss / NUM_SHARES
 
 
@@ -166,14 +154,19 @@ def evaluate_reconstruction(encoder, decoder, loader, device):
     with torch.no_grad():
         for images, _ in loader:
             images = images.to(device)
-            shares = encoder(images)
-            reconstructed = reconstruct(decoder, shares)
+            reconstructed = reconstruct(decoder, encoder(images))
             batch_size = images.shape[0]
             total_mse += F.mse_loss(reconstructed, images).item() * batch_size
             total_images += batch_size
 
     mse = total_mse / total_images
     return mse, psnr_from_mse(mse)
+
+
+def effective_weight(target_weight, epoch, warmup_epochs):
+    if target_weight <= 0.0 or warmup_epochs <= 0:
+        return target_weight
+    return target_weight * min(epoch / warmup_epochs, 1.0)
 
 
 def save_best(
@@ -195,42 +188,37 @@ def save_best(
     torch.save(decoder.state_dict(), paths["decoder"])
     torch.save(discriminator.state_dict(), paths["discriminator"])
 
-    metadata = {
-        "experiment": "privacy_gan",
-        "best_epoch": epoch,
-        "validation_mse": validation_mse,
-        "validation_psnr_db": validation_psnr,
-        "device": str(device),
-        "train_images": args.train_images,
-        "test_images": args.test_images,
-        "epochs": args.epochs,
-        "batch_size": args.batch_size,
-        "image_size": args.image_size,
-        "generator_lr": args.generator_lr,
-        "attacker_lr": args.attacker_lr,
-        "discriminator_lr": args.discriminator_lr,
-        "privacy_weight": args.privacy_weight,
-        "privacy_warmup_epochs": args.privacy_warmup_epochs,
-        "effective_privacy_weight_at_best_epoch": effective_privacy_weight,
-        "gan_weight": args.gan_weight,
-        "attacker_steps": args.attacker_steps,
-        "seed": args.seed,
-        "init_checkpoint_dir": args.init_checkpoint_dir,
-        "parameter_counts": model_parameter_summary(
-            encoder,
-            decoder,
-            ShareAttacker().to(device),
-            discriminator,
-        ),
-    }
-    save_json(metadata, paths["metadata"])
-
-
-def effective_weight(target_weight, epoch, warmup_epochs):
-    if target_weight <= 0.0 or warmup_epochs <= 0:
-        return target_weight
-    progress = min(epoch / warmup_epochs, 1.0)
-    return target_weight * progress
+    save_json(
+        {
+            "experiment": "privacy_gan",
+            "best_epoch": epoch,
+            "validation_mse": validation_mse,
+            "validation_psnr_db": validation_psnr,
+            "device": str(device),
+            "train_images": args.train_images,
+            "test_images": args.test_images,
+            "epochs": args.epochs,
+            "batch_size": args.batch_size,
+            "image_size": args.image_size,
+            "generator_lr": args.generator_lr,
+            "attacker_lr": args.attacker_lr,
+            "discriminator_lr": args.discriminator_lr,
+            "privacy_weight": args.privacy_weight,
+            "privacy_warmup_epochs": args.privacy_warmup_epochs,
+            "effective_privacy_weight_at_best_epoch": effective_privacy_weight,
+            "gan_weight": args.gan_weight,
+            "attacker_steps": args.attacker_steps,
+            "seed": args.seed,
+            "init_checkpoint_dir": args.init_checkpoint_dir,
+            "parameter_counts": model_parameter_summary(
+                encoder,
+                decoder,
+                ShareAttacker().to(device),
+                discriminator,
+            ),
+        },
+        paths["metadata"],
+    )
 
 
 def main():
@@ -274,22 +262,13 @@ def main():
     decoder = ShareDecoder().to(device)
     discriminator = PrivacyDiscriminator().to(device)
 
-    initialized = load_optional_initialization(
-        encoder,
-        decoder,
-        args,
-        device,
-    )
+    initialized = load_optional_initialization(encoder, decoder, args, device)
     if initialized:
         print(f"Initialized from: {args.init_checkpoint_dir}")
     else:
         print("Initialized from scratch")
 
-    attackers, attacker_optimizers = create_attackers(
-        device,
-        args.attacker_lr,
-    )
-
+    attackers, attacker_optimizers = create_attackers(device, args.attacker_lr)
     generator_optimizer = torch.optim.Adam(
         list(encoder.parameters()) + list(decoder.parameters()),
         lr=args.generator_lr,
@@ -305,7 +284,6 @@ def main():
     for epoch in range(1, args.epochs + 1):
         encoder.train()
         decoder.train()
-
         current_privacy_weight = effective_weight(
             args.privacy_weight,
             epoch,
@@ -334,13 +312,11 @@ def main():
             )
 
             shares = encoder(images)
-            discriminator_loss, discriminator_accuracy = (
-                train_privacy_discriminator(
-                    discriminator,
-                    discriminator_optimizer,
-                    images,
-                    shares,
-                )
+            discriminator_loss, discriminator_accuracy = train_privacy_discriminator(
+                discriminator,
+                discriminator_optimizer,
+                images,
+                shares,
             )
 
             shares = encoder(images)
@@ -350,8 +326,7 @@ def main():
             attack_loss = 0.0
             for share_index, attacker in enumerate(attackers):
                 attacker.eval()
-                attacked = attacker(shares[share_index])
-                attack_loss = attack_loss + F.mse_loss(attacked, images)
+                attack_loss += F.mse_loss(attacker(shares[share_index]), images)
             attack_loss = attack_loss / NUM_SHARES
 
             set_requires_grad(discriminator, False)
@@ -365,7 +340,6 @@ def main():
                 images,
                 shares,
             )
-
             generator_loss = (
                 reconstruction_loss
                 - current_privacy_weight * attack_loss
@@ -410,7 +384,6 @@ def main():
             test_loader,
             device,
         )
-
         row = {
             "epoch": epoch,
             "effective_privacy_weight": current_privacy_weight,
@@ -448,12 +421,7 @@ def main():
             )
             print(f"Saved new best checkpoint: {best_psnr:.3f} dB")
 
-        print()
-
-    save_csv(
-        history,
-        Path(args.checkpoint_dir) / "training_log.csv",
-    )
+    save_csv(history, Path(args.checkpoint_dir) / "training_log.csv")
     save_json(
         {
             "experiment": "privacy_gan",
