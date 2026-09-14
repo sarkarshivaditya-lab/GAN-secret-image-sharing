@@ -35,56 +35,55 @@ def build_cifar10_loaders(
     test_images=1000,
     batch_size=8,
     image_size=IMAGE_SIZE,
-    seed=42
+    seed=42,
 ):
     transform = transforms.Compose([
         transforms.Resize((image_size, image_size)),
-        transforms.ToTensor()
+        transforms.ToTensor(),
     ])
 
     train_dataset = datasets.CIFAR10(
         root=data_dir,
         train=True,
         download=True,
-        transform=transform
+        transform=transform,
     )
 
     test_dataset = datasets.CIFAR10(
         root=data_dir,
         train=False,
         download=True,
-        transform=transform
+        transform=transform,
     )
 
     train_count = min(train_images, len(train_dataset))
     test_count = min(test_images, len(test_dataset))
 
-    train_dataset = torch.utils.data.Subset(
-        train_dataset,
-        range(train_count)
-    )
-
-    test_dataset = torch.utils.data.Subset(
-        test_dataset,
-        range(test_count)
-    )
+    if train_count < 1 or test_count < 1:
+        raise ValueError("train_images and test_images must be positive.")
 
     generator = torch.Generator()
     generator.manual_seed(seed)
+
+    train_indices = torch.randperm(len(train_dataset), generator=generator).tolist()[:train_count]
+    test_indices = list(range(test_count))
+
+    train_dataset = torch.utils.data.Subset(train_dataset, train_indices)
+    test_dataset = torch.utils.data.Subset(test_dataset, test_indices)
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
         num_workers=0,
-        generator=generator
+        generator=generator,
     )
 
     test_loader = torch.utils.data.DataLoader(
         test_dataset,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=0
+        num_workers=0,
     )
 
     return train_loader, test_loader
@@ -138,7 +137,7 @@ def save_comparison_grid(images, shares, reconstruction, path):
     grid = make_grid(
         torch.cat(rows, dim=0),
         nrow=images.shape[0],
-        padding=2
+        padding=2,
     )
     save_tensor_image(grid, path)
 
@@ -147,7 +146,7 @@ def load_state_dict_compat(model, path, device):
     checkpoint = torch.load(
         path,
         map_location=device,
-        weights_only=False
+        weights_only=False,
     )
 
     if isinstance(checkpoint, dict):
@@ -155,7 +154,7 @@ def load_state_dict_compat(model, path, device):
             "model_state_dict",
             "state_dict",
             "encoder_state_dict",
-            "decoder_state_dict"
+            "decoder_state_dict",
         ):
             if key in checkpoint:
                 checkpoint = checkpoint[key]
@@ -191,7 +190,7 @@ def checkpoint_paths(directory):
         "decoder": directory / "decoder_best.pth",
         "discriminator": directory / "discriminator_best.pth",
         "metadata": directory / "best_info.json",
-        "training_log": directory / "training_log.csv"
+        "training_log": directory / "training_log.csv",
     }
 
 
@@ -208,5 +207,5 @@ def model_parameter_summary(encoder, decoder, attacker, discriminator):
         "encoder_trainable_parameters": count_parameters(encoder),
         "decoder_trainable_parameters": count_parameters(decoder),
         "attacker_trainable_parameters": count_parameters(attacker),
-        "discriminator_trainable_parameters": count_parameters(discriminator)
+        "discriminator_trainable_parameters": count_parameters(discriminator),
     }
