@@ -1,5 +1,4 @@
 import argparse
-import os
 from pathlib import Path
 
 import torch
@@ -35,13 +34,17 @@ def parse_args():
     parser.add_argument("--attacker-lr", type=float, default=2e-4)
     parser.add_argument("--discriminator-lr", type=float, default=2e-4)
     parser.add_argument("--privacy-weight", type=float, default=0.10)
+    parser.add_argument("--privacy-warmup-epochs", type=int, default=5)
     parser.add_argument("--gan-weight", type=float, default=0.01)
     parser.add_argument("--attacker-steps", type=int, default=2)
     parser.add_argument("--grad-clip", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--data-dir", default="data")
     parser.add_argument("--checkpoint-dir", default="checkpoints/privacy_gan")
-    parser.add_argument("--init-checkpoint-dir", default=None)
+    parser.add_argument(
+        "--init-checkpoint-dir",
+        default="checkpoints/privacy_sweep/lambda_0.10",
+    )
     return parser.parse_args()
 
 
@@ -123,11 +126,11 @@ def train_privacy_discriminator(discriminator, optimizer, images, shares):
 
         positive_loss = F.binary_cross_entropy_with_logits(
             positive_logits,
-            positive_targets
+            positive_targets,
         )
         negative_loss = F.binary_cross_entropy_with_logits(
             negative_logits,
-            negative_targets
+            negative_targets,
         )
         loss = 0.5 * (positive_loss + negative_loss)
 
@@ -173,7 +176,17 @@ def evaluate_reconstruction(encoder, decoder, loader, device):
     return mse, psnr_from_mse(mse)
 
 
-def save_best(encoder, decoder, discriminator, epoch, validation_mse, validation_psnr, args, device):
+def save_best(
+    encoder,
+    decoder,
+    discriminator,
+    epoch,
+    validation_mse,
+    validation_psnr,
+    args,
+    device,
+    effective_privacy_weight,
+):
     directory = Path(args.checkpoint_dir)
     directory.mkdir(parents=True, exist_ok=True)
     paths = checkpoint_paths(directory)
@@ -197,6 +210,8 @@ def save_best(encoder, decoder, discriminator, epoch, validation_mse, validation
         "attacker_lr": args.attacker_lr,
         "discriminator_lr": args.discriminator_lr,
         "privacy_weight": args.privacy_weight,
+        "privacy_warmup_epochs": args.privacy_warmup_epochs,
+        "effective_privacy_weight_at_best_epoch": effective_privacy_weight,
         "gan_weight": args.gan_weight,
         "attacker_steps": args.attacker_steps,
         "seed": args.seed,
@@ -211,10 +226,19 @@ def save_best(encoder, decoder, discriminator, epoch, validation_mse, validation
     save_json(metadata, paths["metadata"])
 
 
+def effective_weight(target_weight, epoch, warmup_epochs):
+    if target_weight <= 0.0 or warmup_epochs <= 0:
+        return target_weight
+    progress = min(epoch / warmup_epochs, 1.0)
+    return target_weight * progress
+
+
 def main():
     args = parse_args()
     if args.epochs < 1 or args.attacker_steps < 1:
         raise ValueError("epochs and attacker-steps must be positive.")
+    if args.privacy_warmup_epochs < 0:
+        raise ValueError("privacy-warmup-epochs cannot be negative.")
 
     seed_everything(args.seed)
     device = (
@@ -231,8 +255,10 @@ def main():
     print(f"Test images: {args.test_images}")
     print(f"Epochs: {args.epochs}")
     print(f"Batch size: {args.batch_size}")
-    print(f"Privacy weight: {args.privacy_weight}")
+    print(f"Target privacy weight: {args.privacy_weight}")
+    print(f"Privacy warmup epochs: {args.privacy_warmup_epochs}")
     print(f"GAN weight: {args.gan_weight}")
+    print(f"Initialization: {args.init_checkpoint_dir or 'scratch'}")
     print()
 
     train_loader, test_loader = build_cifar10_loaders(
@@ -279,6 +305,12 @@ def main():
     for epoch in range(1, args.epochs + 1):
         encoder.train()
         decoder.train()
+
+        current_privacy_weight = effective_weight(
+            args.privacy_weight,
+            epoch,
+            args.privacy_warmup_epochs,
+        )
 
         totals = {
             "reconstruction": 0.0,
@@ -336,7 +368,7 @@ def main():
 
             generator_loss = (
                 reconstruction_loss
-                - args.privacy_weight * attack_loss
+                - current_privacy_weight * attack_loss
                 + args.gan_weight * privacy_loss
             )
 
@@ -367,6 +399,7 @@ def main():
                     f"Recon {reconstruction_loss.item():.6f} | "
                     f"Attack {attack_loss.item():.6f} | "
                     f"Privacy {privacy_loss.item():.6f} | "
+                    f"Priv-w {current_privacy_weight:.4f} | "
                     f"D {discriminator_loss:.6f} | "
                     f"D-acc {discriminator_accuracy * 100:.2f}%"
                 )
@@ -380,6 +413,7 @@ def main():
 
         row = {
             "epoch": epoch,
+            "effective_privacy_weight": current_privacy_weight,
             "train_reconstruction_loss": totals["reconstruction"] / batches,
             "train_attack_loss": totals["attack"] / batches,
             "train_privacy_loss": totals["privacy"] / batches,
@@ -394,6 +428,7 @@ def main():
         print()
         print(
             f"Epoch {epoch}/{args.epochs} | "
+            f"Privacy weight {current_privacy_weight:.4f} | "
             f"Validation MSE {validation_mse:.6f} | "
             f"Validation PSNR {validation_psnr:.3f} dB"
         )
@@ -409,6 +444,7 @@ def main():
                 validation_psnr,
                 args,
                 device,
+                current_privacy_weight,
             )
             print(f"Saved new best checkpoint: {best_psnr:.3f} dB")
 
