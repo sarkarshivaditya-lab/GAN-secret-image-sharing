@@ -160,8 +160,7 @@ def share_entropy(share):
     values = share.detach().float().cpu().numpy().reshape(-1)
     if values.size == 0 or float(values.max()) - float(values.min()) < 1e-12:
         return 0.0
-    normalized = (values - values.min()) / (values.max() - values.min())
-    bins = np.clip((normalized * 255).astype(np.int32), 0, 255)
+    bins = np.clip((values * 255.0).astype(np.int32), 0, 255)
     counts = np.bincount(bins, minlength=256).astype(np.float64)
     probabilities = counts / counts.sum()
     probabilities = probabilities[probabilities > 0]
@@ -261,18 +260,10 @@ def main():
     print(f"Checkpoint directory: {args.checkpoint_dir}")
     print()
 
-    _, test_loader = build_cifar10_loaders(
+    train_loader, test_loader = build_cifar10_loaders(
         data_dir=args.data_dir,
         train_images=args.attacker_train_images,
         test_images=args.test_images,
-        batch_size=args.batch_size,
-        image_size=args.image_size,
-        seed=args.seed,
-    )
-    train_loader, _ = build_cifar10_loaders(
-        data_dir=args.data_dir,
-        train_images=args.attacker_train_images,
-        test_images=1,
         batch_size=args.batch_size,
         image_size=args.image_size,
         seed=args.seed,
@@ -290,7 +281,6 @@ def main():
 
     print(f"Legitimate reconstruction PSNR: {legitimate['psnr_db']:.3f} dB")
 
-    attackers = []
     attack_results = {}
     attack_outputs = []
 
@@ -310,7 +300,6 @@ def main():
             share_index,
             device,
         )
-        attackers.append(attacker)
         attack_results[f"share_{share_index + 1}"] = {
             "mse": mse,
             "psnr_db": psnr,
@@ -320,18 +309,9 @@ def main():
 
     if attack_outputs:
         sample_count = min(args.visual_samples, attack_outputs[0].shape[0])
-        attacker_grid = torch.cat(
-            [output[:sample_count] for output in attack_outputs],
-            dim=0,
-        )
+        rows = [output[:sample_count] for output in attack_outputs]
         save_tensor_image(
-            torch.cat(
-                [
-                    attacker_grid[i:i + sample_count]
-                    for i in range(0, attacker_grid.shape[0], sample_count)
-                ],
-                dim=0,
-            ),
+            torch.cat(rows, dim=0),
             visual_dir / "fresh_attacker_grid.png",
         )
 
@@ -353,11 +333,10 @@ def main():
                 cross_correlations[key]["sum"] += pearson(shares[i], shares[j])
                 cross_correlations[key]["count"] += 1
 
-    share_summary = {}
-    for key, values in share_stats.items():
-        share_summary[key] = {
-            "mean_entropy_bits": values["entropy_sum"] / values["batches"]
-        }
+    share_summary = {
+        key: {"mean_entropy_bits": values["entropy_sum"] / values["batches"]}
+        for key, values in share_stats.items()
+    }
 
     correlation_summary = {
         key: values["sum"] / values["count"]
