@@ -22,7 +22,8 @@ def parse_args():
     parser.add_argument("--validation-images", type=int, default=1000)
     parser.add_argument("--test-images", type=int, default=1000)
     parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--image-size", type=int, default=256)
+    parser.add_argument("--image-size", type=int, default=32)
+    parser.add_argument("--display-size", type=int, default=256)
     parser.add_argument("--data-dir", default="data")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output-dir", default="outputs/static_gan")
@@ -98,6 +99,8 @@ def main():
         raise ValueError("The selected split must contain at least one image")
     if args.samples < 1:
         raise ValueError("samples must be positive")
+    if args.display_size < args.image_size:
+        raise ValueError("display-size must be at least image-size")
 
     total_mse = 0.0
     total_count = 0
@@ -155,11 +158,21 @@ def main():
             "psnr_db": masked_psnr,
         }
 
+    display_images = F.interpolate(
+        first_images,
+        size=(args.display_size, args.display_size),
+        mode="nearest",
+    )
     share_display = [
-        F.interpolate(share, size=(args.image_size, args.image_size), mode="nearest")
+        F.interpolate(share, size=(args.display_size, args.display_size), mode="nearest")
         for share in first_shares
     ]
-    rows = [first_images, *share_display, first_reconstruction]
+    reconstruction_display = F.interpolate(
+        first_reconstruction,
+        size=(args.display_size, args.display_size),
+        mode="nearest",
+    )
+    rows = [display_images, *share_display, reconstruction_display]
     grid = make_grid(
         torch.cat(rows, dim=0).cpu(),
         nrow=first_images.shape[0],
@@ -175,7 +188,7 @@ def main():
     save_image(noise_grid.clamp(0, 1), output_dir / "reference_uniform_noise.png")
 
     results = {
-        "experiment": "static_gan",
+        "experiment": "static_gan_v2",
         "checkpoint_dir": str(checkpoint_dir),
         "device": str(device),
         "split": args.split,
@@ -183,6 +196,8 @@ def main():
         "validation_images": args.validation_images,
         "test_images": args.test_images,
         "evaluated_images": sample_count,
+        "image_size": args.image_size,
+        "display_size": args.display_size,
         "reconstruction_mse": mse,
         "reconstruction_psnr_db": psnr,
         "share_static_metrics": share_metrics,
@@ -198,6 +213,7 @@ def main():
     print(f"Device: {device}")
     print(f"Evaluation split: {args.split}")
     print(f"Evaluated images: {sample_count}")
+    print(f"Reconstruction resolution: {args.image_size}x{args.image_size}")
     print(f"Reconstruction PSNR: {psnr:.3f} dB")
     for name, metrics in share_metrics.items():
         print(
