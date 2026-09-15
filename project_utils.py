@@ -32,6 +32,7 @@ def seed_everything(seed):
 def build_cifar10_loaders(
     data_dir="data",
     train_images=10000,
+    validation_images=1000,
     test_images=1000,
     batch_size=8,
     image_size=IMAGE_SIZE,
@@ -56,37 +57,54 @@ def build_cifar10_loaders(
         transform=transform,
     )
 
-    train_count = min(train_images, len(train_dataset))
-    test_count = min(test_images, len(test_dataset))
+    requested_train = max(0, int(train_images))
+    requested_validation = max(0, int(validation_images))
+    requested_test = max(0, int(test_images))
 
-    if train_count < 1 or test_count < 1:
-        raise ValueError("train_images and test_images must be positive.")
+    if requested_train < 1 or requested_validation < 1 or requested_test < 1:
+        raise ValueError("train_images, validation_images, and test_images must be positive.")
+    if requested_train + requested_validation > len(train_dataset):
+        raise ValueError(
+            "train_images + validation_images must not exceed the CIFAR-10 training set size."
+        )
+    if requested_test > len(test_dataset):
+        raise ValueError("test_images must not exceed the CIFAR-10 test set size.")
 
     generator = torch.Generator()
     generator.manual_seed(seed)
 
-    train_indices = torch.randperm(len(train_dataset), generator=generator).tolist()[:train_count]
-    test_indices = list(range(test_count))
+    train_indices = torch.randperm(len(train_dataset), generator=generator).tolist()
+    train_split_indices = train_indices[:requested_train]
+    validation_split_indices = train_indices[requested_train:requested_train + requested_validation]
+    test_indices = list(range(requested_test))
 
-    train_dataset = torch.utils.data.Subset(train_dataset, train_indices)
-    test_dataset = torch.utils.data.Subset(test_dataset, test_indices)
+    train_subset = torch.utils.data.Subset(train_dataset, train_split_indices)
+    validation_subset = torch.utils.data.Subset(train_dataset, validation_split_indices)
+    test_subset = torch.utils.data.Subset(test_dataset, test_indices)
 
     train_loader = torch.utils.data.DataLoader(
-        train_dataset,
+        train_subset,
         batch_size=batch_size,
         shuffle=True,
         num_workers=0,
         generator=generator,
     )
 
-    test_loader = torch.utils.data.DataLoader(
-        test_dataset,
+    validation_loader = torch.utils.data.DataLoader(
+        validation_subset,
         batch_size=batch_size,
         shuffle=False,
         num_workers=0,
     )
 
-    return train_loader, test_loader
+    test_loader = torch.utils.data.DataLoader(
+        test_subset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=0,
+    )
+
+    return train_loader, validation_loader, test_loader
 
 
 def psnr_from_mse(mse):
