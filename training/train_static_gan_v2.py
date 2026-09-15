@@ -33,6 +33,7 @@ def parse_args():
     parser.add_argument("--discriminator-lr", type=float, default=2e-4)
     parser.add_argument("--static-weight", type=float, default=0.001)
     parser.add_argument("--l1-weight", type=float, default=0.10)
+    parser.add_argument("--color-weight", type=float, default=0.10)
     parser.add_argument("--discriminator-steps", type=int, default=1)
     parser.add_argument("--grad-clip", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=42)
@@ -165,9 +166,9 @@ def save_best(encoder, decoder, discriminators, epoch, mse, psnr, static_metrics
             "discriminator_lr": args.discriminator_lr,
             "static_weight": args.static_weight,
             "l1_weight": args.l1_weight,
+            "color_weight": args.color_weight,
             "discriminator_steps": args.discriminator_steps,
             "grad_clip": args.grad_clip,
-            "color_weight": args.color_weight,
             "seed": args.seed,
             "device": str(device),
         },
