@@ -1,0 +1,75 @@
+{
+  "experiment": "static_gan",
+  "checkpoint_dir": "checkpoints/static_gan",
+  "device": "mps",
+  "split": "test",
+  "train_images": 10000,
+  "test_images": 1000,
+  "evaluated_images": 1000,
+  "reconstruction_mse": 2.9993048607138916e-05,
+  "reconstruction_psnr_db": 45.22979259490967,
+  "share_static_metrics": {
+    "share_1": {
+      "mean": 0.49998920226097104,
+      "std": 0.2886384491920471,
+      "mean_abs_deviation_from_half": 0.004102527797222137,
+      "std_abs_deviation_from_uniform": 0.001804952174425125,
+      "horizontal_difference_mse": 0.1666160054206848,
+      "vertical_difference_mse": 0.16673215389251708,
+      "target_horizontal_difference_mse": 0.16666666666666666,
+      "target_vertical_difference_mse": 0.16666666666666666
+    },
+    "share_2": {
+      "mean": 0.4998193619251251,
+      "std": 0.2885599353313446,
+      "mean_abs_deviation_from_half": 0.004182408213615417,
+      "std_abs_deviation_from_uniform": 0.0018161453902721405,
+      "horizontal_difference_mse": 0.1666338130235672,
+      "vertical_difference_mse": 0.16660736882686614,
+      "target_horizontal_difference_mse": 0.16666666666666666,
+      "target_vertical_difference_mse": 0.16666666666666666
+    },
+    "share_3": {
+      "mean": 0.4999689302444458,
+      "std": 0.2887481904029846,
+      "mean_abs_deviation_from_half": 0.004319310128688812,
+      "std_abs_deviation_from_uniform": 0.0019411582946777344,
+      "horizontal_difference_mse": 0.16687323820590974,
+      "vertical_difference_mse": 0.16685230851173402,
+      "target_horizontal_difference_mse": 0.16666666666666666,
+      "target_vertical_difference_mse": 0.16666666666666666
+    },
+    "share_4": {
+      "mean": 0.4999081361293793,
+      "std": 0.28858463549613955,
+      "mean_abs_deviation_from_half": 0.00425631844997406,
+      "std_abs_deviation_from_uniform": 0.0018248109221458435,
+      "horizontal_difference_mse": 0.16649527966976166,
+      "vertical_difference_mse": 0.1664850970506668,
+      "target_horizontal_difference_mse": 0.16666666666666666,
+      "target_vertical_difference_mse": 0.16666666666666666
+    }
+  },
+  "leave_one_share_out": {
+    "without_share_1": {
+      "mse": 0.10261967372894287,
+      "psnr_db": 9.887694120407104
+    },
+    "without_share_2": {
+      "mse": 0.10262736624479293,
+      "psnr_db": 9.887368083000183
+    },
+    "without_share_3": {
+      "mse": 0.10251163429021835,
+      "psnr_db": 9.892268776893616
+    },
+    "without_share_4": {
+      "mse": 0.10272285807132721,
+      "psnr_db": 9.883329272270203
+    }
+  },
+  "visuals": {
+    "static_reconstruction_grid": "outputs/static_gan/static_reconstruction_grid.png",
+    "reference_uniform_noise": "outputs/static_gan/reference_uniform_noise.png"
+  }
+}

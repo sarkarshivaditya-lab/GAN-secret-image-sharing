@@ -1,0 +1,45 @@
+{
+  "experiment": "static_gan_v2",
+  "share_scheme": "three_independent_uniform_masks_plus_modular_payload_share",
+  "best_epoch": 29,
+  "validation_mse": 2.9993047472089528e-05,
+  "validation_psnr_db": 45.229794050950176,
+  "validation_static_metrics": [
+    {
+      "mean": 0.4997936818599701,
+      "std": 0.2886806173324585,
+      "horizontal_difference_mse": 0.16683122205734252,
+      "vertical_difference_mse": 0.16666258823871613
+    },
+    {
+      "mean": 0.5000539338588714,
+      "std": 0.2885379729270935,
+      "horizontal_difference_mse": 0.16661953866481782,
+      "vertical_difference_mse": 0.16654908454418182
+    },
+    {
+      "mean": 0.4998310353755951,
+      "std": 0.28878073072433474,
+      "horizontal_difference_mse": 0.16678078317642211,
+      "vertical_difference_mse": 0.166789981007576
+    },
+    {
+      "mean": 0.5001052904129029,
+      "std": 0.2886132583618164,
+      "horizontal_difference_mse": 0.1665199508666992,
+      "vertical_difference_mse": 0.1665439568758011
+    }
+  ],
+  "train_images": 10000,
+  "test_images": 1000,
+  "epochs": 30,
+  "batch_size": 8,
+  "image_size": 256,
+  "generator_lr": 0.0001,
+  "discriminator_lr": 0.0002,
+  "static_weight": 0.001,
+  "l1_weight": 0.1,
+  "discriminator_steps": 1,
+  "seed": 42,
+  "device": "mps"
+}
