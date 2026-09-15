@@ -2,70 +2,71 @@
   "experiment": "static_gan",
   "checkpoint_dir": "checkpoints/static_gan",
   "device": "mps",
-  "split": "test",
-  "train_images": 10000,
-  "test_images": 1000,
-  "evaluated_images": 1000,
-  "reconstruction_mse": 2.9993048607138916e-05,
-  "reconstruction_psnr_db": 45.22979259490967,
+  "split": "train",
+  "train_images": 100,
+  "validation_images": 1000,
+  "test_images": 50,
+  "evaluated_images": 100,
+  "reconstruction_mse": 0.0065133829880505804,
+  "reconstruction_psnr_db": 21.861934661865234,
   "share_static_metrics": {
     "share_1": {
-      "mean": 0.49998920226097104,
-      "std": 0.2886384491920471,
-      "mean_abs_deviation_from_half": 0.004102527797222137,
-      "std_abs_deviation_from_uniform": 0.001804952174425125,
-      "horizontal_difference_mse": 0.1666160054206848,
-      "vertical_difference_mse": 0.16673215389251708,
-      "target_horizontal_difference_mse": 0.16666666666666666,
-      "target_vertical_difference_mse": 0.16666666666666666
+      "mean": 0.5012480294704438,
+      "std": 0.288587908744812,
+      "mean_abs_deviation_from_half": 0.004239494204521179,
+      "std_abs_deviation_from_uniform": 0.0018012210726737975,
+      "horizontal_difference_mse": 0.16623207092285155,
+      "vertical_difference_mse": 0.16655028522014617,
+      "target_horizontal_difference_mse": 0.16666666666666663,
+      "target_vertical_difference_mse": 0.16666666666666663
     },
     "share_2": {
-      "mean": 0.4998193619251251,
-      "std": 0.2885599353313446,
-      "mean_abs_deviation_from_half": 0.004182408213615417,
-      "std_abs_deviation_from_uniform": 0.0018161453902721405,
-      "horizontal_difference_mse": 0.1666338130235672,
-      "vertical_difference_mse": 0.16660736882686614,
-      "target_horizontal_difference_mse": 0.16666666666666666,
-      "target_vertical_difference_mse": 0.16666666666666666
+      "mean": 0.49976484656333925,
+      "std": 0.2888597643375397,
+      "mean_abs_deviation_from_half": 0.0044235804677009586,
+      "std_abs_deviation_from_uniform": 0.0018329772353172303,
+      "horizontal_difference_mse": 0.16633337140083312,
+      "vertical_difference_mse": 0.16697626411914826,
+      "target_horizontal_difference_mse": 0.16666666666666663,
+      "target_vertical_difference_mse": 0.16666666666666663
     },
     "share_3": {
-      "mean": 0.4999689302444458,
-      "std": 0.2887481904029846,
-      "mean_abs_deviation_from_half": 0.004319310128688812,
-      "std_abs_deviation_from_uniform": 0.0019411582946777344,
-      "horizontal_difference_mse": 0.16687323820590974,
-      "vertical_difference_mse": 0.16685230851173402,
-      "target_horizontal_difference_mse": 0.16666666666666666,
-      "target_vertical_difference_mse": 0.16666666666666666
+      "mean": 0.49992777705192565,
+      "std": 0.28878955125808714,
+      "mean_abs_deviation_from_half": 0.004563550651073456,
+      "std_abs_deviation_from_uniform": 0.0018812361359596252,
+      "horizontal_difference_mse": 0.16732021808624267,
+      "vertical_difference_mse": 0.16689285039901733,
+      "target_horizontal_difference_mse": 0.16666666666666663,
+      "target_vertical_difference_mse": 0.16666666666666663
     },
     "share_4": {
-      "mean": 0.4999081361293793,
-      "std": 0.28858463549613955,
-      "mean_abs_deviation_from_half": 0.00425631844997406,
-      "std_abs_deviation_from_uniform": 0.0018248109221458435,
-      "horizontal_difference_mse": 0.16649527966976166,
-      "vertical_difference_mse": 0.1664850970506668,
-      "target_horizontal_difference_mse": 0.16666666666666666,
-      "target_vertical_difference_mse": 0.16666666666666666
+      "mean": 0.49966670155525206,
+      "std": 0.2886479163169861,
+      "mean_abs_deviation_from_half": 0.00375562846660614,
+      "std_abs_deviation_from_uniform": 0.0017612969875335693,
+      "horizontal_difference_mse": 0.16692250430583955,
+      "vertical_difference_mse": 0.16643740355968475,
+      "target_horizontal_difference_mse": 0.16666666666666663,
+      "target_vertical_difference_mse": 0.16666666666666663
     }
   },
   "leave_one_share_out": {
     "without_share_1": {
-      "mse": 0.10261967372894287,
-      "psnr_db": 9.887694120407104
+      "mse": 0.09832637593150138,
+      "psnr_db": 10.073299407958984
     },
     "without_share_2": {
-      "mse": 0.10262736624479293,
-      "psnr_db": 9.887368083000183
+      "mse": 0.09770338788628578,
+      "psnr_db": 10.100903511047363
     },
     "without_share_3": {
-      "mse": 0.10251163429021835,
-      "psnr_db": 9.892268776893616
+      "mse": 0.0975924101471901,
+      "psnr_db": 10.105839967727661
     },
     "without_share_4": {
-      "mse": 0.10272285807132721,
-      "psnr_db": 9.883329272270203
+      "mse": 0.09759144932031631,
+      "psnr_db": 10.1058828830719
     }
   },
   "visuals": {

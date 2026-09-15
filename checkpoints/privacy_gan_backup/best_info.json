@@ -1,0 +1,28 @@
+{
+  "experiment": "privacy_gan",
+  "best_epoch": 26,
+  "validation_mse": 0.0002299041018122807,
+  "validation_psnr_db": 36.384532802376896,
+  "device": "mps",
+  "train_images": 10000,
+  "test_images": 1000,
+  "epochs": 30,
+  "batch_size": 8,
+  "image_size": 256,
+  "generator_lr": 0.0001,
+  "attacker_lr": 0.0002,
+  "discriminator_lr": 0.0002,
+  "privacy_weight": 0.1,
+  "privacy_warmup_epochs": 5,
+  "effective_privacy_weight_at_best_epoch": 0.1,
+  "gan_weight": 0.01,
+  "attacker_steps": 2,
+  "seed": 42,
+  "init_checkpoint_dir": "checkpoints/privacy_sweep/lambda_0.10",
+  "parameter_counts": {
+    "encoder_trainable_parameters": 1847372,
+    "decoder_trainable_parameters": 718083,
+    "attacker_trainable_parameters": 1357763,
+    "discriminator_trainable_parameters": 3615105
+  }
+}
