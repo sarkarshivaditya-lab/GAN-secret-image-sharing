@@ -36,12 +36,15 @@ The active training entry point is:
 ```bash
 python -m training.train_static_gan_v2 \
   --train-images 10000 \
+  --validation-images 1000 \
   --test-images 1000 \
   --epochs 30 \
   --batch-size 8
 ```
 
 Training starts from scratch. Do not initialize this model from the previous Privacy-GAN checkpoints.
+
+Training uses three disjoint roles: a deterministic subset of the CIFAR-10 training set for optimization, a separate deterministic validation subset from the remaining CIFAR-10 training images for best-checkpoint selection, and the CIFAR-10 test set for final evaluation only.
 
 The training objective combines reconstruction loss with a low-weight static GAN loss. The static appearance is primarily enforced by the explicit random-mask share construction, so the GAN does not have to fight the reconstruction objective to make the shares random.
 
@@ -54,10 +57,13 @@ Run:
 ```bash
 python -m evaluation.evaluate_static_gan \
   --checkpoint-dir checkpoints/static_gan \
+  --split test \
+  --train-images 10000 \
+  --validation-images 1000 \
   --test-images 1000
 ```
 
-The evaluator reports reconstruction PSNR, per-share noise statistics, and leave-one-share-out reconstruction. It creates:
+The evaluator supports `train`, `validation`, and `test` splits and reports reconstruction PSNR, per-share noise statistics, and leave-one-share-out reconstruction. It creates:
 
 `outputs/static_gan/static_reconstruction_grid.png`
 
@@ -129,7 +135,8 @@ GAN-secret-image-sharing/
 ├── data/
 ├── project_utils.py
 ├── requirements.txt
-└── README.md
+└── tests/
+    └── test_split_protocol.py
 ```
 
 ## Practical workflow
@@ -138,6 +145,7 @@ GAN-secret-image-sharing/
 2. Run `python -m scripts.validate_project`.
 3. Run the small one-epoch smoke training command before a long run.
 4. Run `training.train_static_gan_v2` for the full training pass.
-5. Run `evaluation.evaluate_static_gan`.
-6. Inspect the reconstruction grid against the reference uniform-noise image.
-7. Preserve successful checkpoints before changing the configuration.
+5. Select the best checkpoint from the validation split.
+6. Run `evaluation.evaluate_static_gan --split test` for final test evaluation.
+7. Inspect the reconstruction grid against the reference uniform-noise image.
+8. Preserve successful checkpoints before changing the configuration.
