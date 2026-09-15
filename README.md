@@ -14,7 +14,7 @@ The practical objective is that the saved shares look like random TV static whil
 
 ## Architecture
 
-`models/encoder.py` first compresses the 256 × 256 source image into a learned 3 × 32 × 32 payload.
+`models/encoder.py` operates on the native 32 × 32 CIFAR-10 image and produces a learned 3 × 32 × 32 payload.
 
 The payload is then wrapped into four shares:
 
@@ -23,9 +23,9 @@ The payload is then wrapped into four shares:
 - Share 3 is an independent uniform random mask.
 - Share 4 is the payload minus the first three masks, reduced modulo 1.
 
-Consequently, the four-share sum modulo 1 recovers the payload exactly (up to floating-point precision). Because independent uniform masks are used, the individual shares are designed to have the statistics of uniform random noise rather than carrying ordinary visible image structure.
+Consequently, the four-share sum modulo 1 recovers the payload up to floating-point precision. Because independent uniform masks are used, the individual shares are designed to have the statistics of uniform random noise rather than carrying ordinary visible image structure.
 
-`models/decoder.py` performs the modular share fusion and then learns to reconstruct the original 256 × 256 image from the recovered payload.
+`models/decoder.py` performs the modular share fusion and reconstructs the native 32 × 32 RGB image. Evaluation can upscale the native reconstruction to 256 × 256 for visual presentation without making the decoder solve an artificial super-resolution problem.
 
 `models/static_discriminator.py` remains as an auxiliary GAN component. It distinguishes the generated shares from fresh uniform noise during training. The masking construction, rather than the discriminator alone, is what makes the shares reliably noise-like.
 
@@ -36,6 +36,7 @@ The active training entry point is:
 ```bash
 python -m training.train_static_gan_v2 \
   --train-images 10000 \
+  --validation-images 1000 \
   --test-images 1000 \
   --epochs 30 \
   --batch-size 8
@@ -43,7 +44,9 @@ python -m training.train_static_gan_v2 \
 
 Training starts from scratch. Do not initialize this model from the previous Privacy-GAN checkpoints.
 
-The training objective combines reconstruction loss with a low-weight static GAN loss. The static appearance is primarily enforced by the explicit random-mask share construction, so the GAN does not have to fight the reconstruction objective to make the shares random.
+Training uses three disjoint roles: a deterministic subset of the CIFAR-10 training set for optimization, a separate deterministic validation subset from the remaining CIFAR-10 training images for best-checkpoint selection, and the CIFAR-10 test set for final evaluation only.
+
+The reconstruction objective is evaluated at native CIFAR-10 resolution using MSE plus L1 loss. The static GAN loss remains low-weight because the explicit modular masking construction already produces noise-like shares.
 
 Checkpoints are written to `checkpoints/static_gan/`.
 
@@ -54,10 +57,13 @@ Run:
 ```bash
 python -m evaluation.evaluate_static_gan \
   --checkpoint-dir checkpoints/static_gan \
+  --split test \
+  --train-images 10000 \
+  --validation-images 1000 \
   --test-images 1000
 ```
 
-The evaluator reports reconstruction PSNR, per-share noise statistics, and leave-one-share-out reconstruction. It creates:
+The evaluator supports `train`, `validation`, and `test` splits and reports reconstruction PSNR at the native image resolution, per-share noise statistics, and leave-one-share-out reconstruction. It creates:
 
 `outputs/static_gan/static_reconstruction_grid.png`
 
@@ -65,7 +71,7 @@ The evaluator reports reconstruction PSNR, per-share noise statistics, and leave
 
 `outputs/static_gan/results.json`
 
-The reconstruction grid contains the original image, enlarged shares, and the reconstruction. The reference image provides a direct visual comparison against fresh uniform noise.
+The reconstruction grid displays the native-resolution source and reconstruction enlarged for inspection, along with enlarged shares. The reference image provides a direct visual comparison against fresh uniform noise.
 
 ## Existing Privacy-GAN baseline
 
@@ -75,7 +81,7 @@ The active TV-static system changes the representation mechanism rather than try
 
 ## Dataset
 
-The current implementation uses CIFAR-10 through TorchVision. Images are resized from 32 × 32 to 256 × 256 and converted to tensors in `[0, 1]`.
+The current implementation uses CIFAR-10 through TorchVision. Images are kept at their native 32 × 32 resolution for model training. Evaluation can upscale the resulting 32 × 32 reconstruction for visualization.
 
 CIFAR-10 is the current training environment. Good performance on this dataset does not imply equivalent performance on arbitrary high-resolution images.
 
@@ -128,16 +134,17 @@ GAN-secret-image-sharing/
 ├── outputs/
 ├── data/
 ├── project_utils.py
-├── requirements.txt
-└── README.md
+└── tests/
+    └── test_data_splits.py
 ```
 
 ## Practical workflow
 
 1. Pull the latest repository and Git LFS files.
 2. Run `python -m scripts.validate_project`.
-3. Run the small one-epoch smoke training command before a long run.
+3. Run the small native-resolution smoke training command before a long run.
 4. Run `training.train_static_gan_v2` for the full training pass.
-5. Run `evaluation.evaluate_static_gan`.
-6. Inspect the reconstruction grid against the reference uniform-noise image.
-7. Preserve successful checkpoints before changing the configuration.
+5. Select the best checkpoint from the validation split.
+6. Run `evaluation.evaluate_static_gan --split test` for final test evaluation.
+7. Inspect the reconstruction grid against the reference uniform-noise image.
+8. Preserve successful checkpoints before changing the configuration.

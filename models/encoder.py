@@ -3,31 +3,35 @@ import torch.nn as nn
 
 
 class ShareEncoder(nn.Module):
-    """Learn a compact payload and wrap it in four TV-static-like shares."""
+    """Encode a native 32x32 RGB image into a 3x32x32 payload and four static shares."""
 
     def __init__(self):
         super().__init__()
 
         self.features = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=4, stride=2, padding=1),
+            nn.Conv2d(3, 64, kernel_size=3, padding=1),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),
+            nn.Conv2d(128, 128, kernel_size=3, padding=1),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.Conv2d(128, 64, kernel_size=3, padding=1),
             nn.LeakyReLU(0.2, inplace=True),
         )
 
         self.payload = nn.Sequential(
-            nn.Conv2d(256, 128, kernel_size=3, padding=1),
+            nn.Conv2d(64, 32, kernel_size=3, padding=1),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(128, 3, kernel_size=3, padding=1),
+            nn.Conv2d(32, 3, kernel_size=3, padding=1),
             nn.Sigmoid(),
         )
 
+    def encode_payload(self, x):
+        """Encode an image directly into the learned 3x32x32 payload."""
+        return self.payload(self.features(x))
+
     def forward(self, x):
-        payload = self.payload(self.features(x))
+        payload = self.encode_payload(x)
 
         share1 = torch.rand_like(payload)
         share2 = torch.rand_like(payload)

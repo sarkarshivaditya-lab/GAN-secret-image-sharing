@@ -1,39 +1,40 @@
 {
   "experiment": "static_gan_v2",
   "share_scheme": "three_independent_uniform_masks_plus_modular_payload_share",
-  "best_epoch": 29,
-  "validation_mse": 2.9993047472089528e-05,
-  "validation_psnr_db": 45.229794050950176,
+  "best_epoch": 17,
+  "validation_mse": 0.007229567957110703,
+  "validation_psnr_db": 21.40887655603008,
   "validation_static_metrics": [
     {
-      "mean": 0.4997936818599701,
-      "std": 0.2886806173324585,
-      "horizontal_difference_mse": 0.16683122205734252,
-      "vertical_difference_mse": 0.16666258823871613
+      "mean": 0.5002028932571411,
+      "std": 0.2886373581886291,
+      "horizontal_difference_mse": 0.16655685269832612,
+      "vertical_difference_mse": 0.16649146461486816
     },
     {
-      "mean": 0.5000539338588714,
-      "std": 0.2885379729270935,
-      "horizontal_difference_mse": 0.16661953866481782,
-      "vertical_difference_mse": 0.16654908454418182
+      "mean": 0.49993176698684694,
+      "std": 0.2886973385810852,
+      "horizontal_difference_mse": 0.16678328812122345,
+      "vertical_difference_mse": 0.16674754750728607
     },
     {
-      "mean": 0.4998310353755951,
-      "std": 0.28878073072433474,
-      "horizontal_difference_mse": 0.16678078317642211,
-      "vertical_difference_mse": 0.166789981007576
+      "mean": 0.4998962163925171,
+      "std": 0.2886207382678986,
+      "horizontal_difference_mse": 0.16666891044378282,
+      "vertical_difference_mse": 0.16645416736602783
     },
     {
-      "mean": 0.5001052904129029,
-      "std": 0.2886132583618164,
-      "horizontal_difference_mse": 0.1665199508666992,
-      "vertical_difference_mse": 0.1665439568758011
+      "mean": 0.500109004497528,
+      "std": 0.288728533744812,
+      "horizontal_difference_mse": 0.1667143759727478,
+      "vertical_difference_mse": 0.16674427604675293
     }
   ],
-  "train_images": 10000,
-  "test_images": 1000,
-  "epochs": 30,
-  "batch_size": 8,
+  "train_images": 100,
+  "validation_images": 1000,
+  "test_images": 50,
+  "epochs": 20,
+  "batch_size": 4,
   "image_size": 256,
   "generator_lr": 0.0001,
   "discriminator_lr": 0.0002,
