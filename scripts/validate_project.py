@@ -7,10 +7,9 @@ if str(ROOT) not in sys.path:
 
 import torch
 
-from models.attacker import ShareAttacker
 from models.decoder import ShareDecoder
 from models.encoder import ShareEncoder
-from models.privacy_discriminator import PrivacyDiscriminator
+from models.static_discriminator import StaticDiscriminator
 
 
 def main():
@@ -27,11 +26,9 @@ def main():
     print(f"Device: {device}")
 
     image = torch.rand(2, 3, 256, 256, device=device)
-
     encoder = ShareEncoder().to(device).eval()
     decoder = ShareDecoder().to(device).eval()
-    attacker = ShareAttacker().to(device).eval()
-    discriminator = PrivacyDiscriminator().to(device).eval()
+    discriminator = StaticDiscriminator().to(device).eval()
 
     with torch.no_grad():
         shares = encoder(image)
@@ -44,22 +41,30 @@ def main():
                 raise RuntimeError(
                     f"Share {index} has unexpected shape: {tuple(share.shape)}"
                 )
+            if share.min().item() < 0.0 or share.max().item() >= 1.0:
+                raise RuntimeError(f"Share {index} is outside the expected [0, 1) range.")
 
+        payload = torch.remainder(sum(shares), 1.0)
         reconstruction = decoder(*shares)
-        attack_reconstruction = attacker(shares[0])
-        discriminator_output = discriminator(image, shares[0])
+        discriminator_output = discriminator(shares[0])
+
+        masked = list(shares)
+        masked[0] = torch.zeros_like(masked[0])
+        missing_share_payload = torch.remainder(sum(masked), 1.0)
 
     expected = (2, 3, 256, 256)
     if reconstruction.shape != expected:
         raise RuntimeError(
             f"Decoder output shape is {tuple(reconstruction.shape)}, expected {expected}."
         )
-    if attack_reconstruction.shape != expected:
-        raise RuntimeError("Attacker output shape is incorrect.")
     if discriminator_output.shape != (2, 1):
-        raise RuntimeError("Privacy discriminator output shape is incorrect.")
+        raise RuntimeError("Static discriminator output shape is incorrect.")
+    if not torch.isfinite(payload).all():
+        raise RuntimeError("Recovered payload contains non-finite values.")
+    if torch.equal(payload, missing_share_payload):
+        raise RuntimeError("Removing a share did not change the recovered payload.")
 
-    print("Model smoke test passed.")
+    print("TV-static share construction smoke test passed.")
 
 
 if __name__ == "__main__":
