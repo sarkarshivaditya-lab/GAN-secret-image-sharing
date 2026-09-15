@@ -11,6 +11,9 @@ from models.encoder import ShareEncoder
 from project_utils import build_cifar10_loaders, get_device, reconstruct, seed_everything
 
 
+NUM_SHARES = 4
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate a TV-static share GAN.")
     parser.add_argument("--checkpoint-dir", default="checkpoints/static_gan")
@@ -34,14 +37,29 @@ def static_metrics(share):
     flat = share.flatten(1)
     mean = flat.mean(dim=1)
     std = flat.std(dim=1, unbiased=False)
-    horizontal = (share[:, :, :, 1:] - share[:, :, :, :-1]).pow(2).mean().item()
-    vertical = (share[:, :, 1:, :] - share[:, :, :-1, :]).pow(2).mean().item()
+    horizontal = (share[:, :, :, 1:] - share[:, :, :, :-1]).pow(2).mean(dim=(1, 2, 3))
+    vertical = (share[:, :, 1:, :] - share[:, :, :-1, :]).pow(2).mean(dim=(1, 2, 3))
     return {
         "mean": mean.mean().item(),
         "std": std.mean().item(),
-        "horizontal_difference_mse": horizontal,
-        "vertical_difference_mse": vertical,
+        "mean_abs_deviation_from_half": (mean - 0.5).abs().mean().item(),
+        "std_abs_deviation_from_uniform": (std - (1.0 / (12.0 ** 0.5))).abs().mean().item(),
+        "horizontal_difference_mse": horizontal.mean().item(),
+        "vertical_difference_mse": vertical.mean().item(),
+        "target_horizontal_difference_mse": 1.0 / 6.0,
+        "target_vertical_difference_mse": 1.0 / 6.0,
     }
+
+
+def normalize_reference_noise(share):
+    noise = torch.rand_like(share)
+    return noise
+
+
+def masked_reconstruction(decoder, shares, missing_index):
+    masked = list(shares)
+    masked[missing_index] = torch.zeros_like(masked[missing_index])
+    return decoder(*masked)
 
 
 def main():
@@ -69,6 +87,9 @@ def main():
     first_images = None
     first_shares = None
     first_reconstruction = None
+    missing_share_mse = [0.0] * NUM_SHARES
+    missing_share_count = 0
+    aggregate_static = [[] for _ in range(NUM_SHARES)]
 
     with torch.no_grad():
         for images, _ in test_loader:
@@ -79,6 +100,12 @@ def main():
             total_mse += F.mse_loss(reconstruction, images).item() * batch
             total_count += batch
 
+            for index in range(NUM_SHARES):
+                masked = masked_reconstruction(decoder, shares, index)
+                missing_share_mse[index] += F.mse_loss(masked, images).item() * batch
+                aggregate_static[index].append(static_metrics(shares[index]))
+            missing_share_count += batch
+
             if first_images is None:
                 first_images = images[:args.samples]
                 first_shares = [share[:args.samples] for share in shares]
@@ -87,18 +114,45 @@ def main():
     mse = total_mse / total_count
     psnr = float("inf") if mse <= 0 else 10.0 * torch.log10(torch.tensor(1.0 / mse)).item()
 
-    share_metrics = {
-        f"share_{index + 1}": static_metrics(share)
-        for index, share in enumerate(first_shares)
-    }
+    share_metrics = {}
+    for index in range(NUM_SHARES):
+        batches = aggregate_static[index]
+        keys = batches[0].keys()
+        share_metrics[f"share_{index + 1}"] = {
+            key: sum(item[key] for item in batches) / len(batches)
+            for key in keys
+        }
+
+    masked_results = {}
+    for index in range(NUM_SHARES):
+        masked_mse = missing_share_mse[index] / missing_share_count
+        masked_psnr = float("inf") if masked_mse <= 0 else 10.0 * torch.log10(
+            torch.tensor(1.0 / masked_mse)
+        ).item()
+        masked_results[f"without_share_{index + 1}"] = {
+            "mse": masked_mse,
+            "psnr_db": masked_psnr,
+        }
 
     share_display = [
         F.interpolate(share, size=(args.image_size, args.image_size), mode="nearest")
         for share in first_shares
     ]
     rows = [first_images, *share_display, first_reconstruction]
-    grid = make_grid(torch.cat(rows, dim=0).cpu(), nrow=first_images.shape[0], padding=2)
+    grid = make_grid(
+        torch.cat(rows, dim=0).cpu(),
+        nrow=first_images.shape[0],
+        padding=2,
+    )
     save_image(grid.clamp(0, 1), output_dir / "static_reconstruction_grid.png")
+
+    noise_grid_rows = [normalize_reference_noise(first_shares[0])]
+    noise_grid = make_grid(
+        torch.cat(noise_grid_rows, dim=0).cpu(),
+        nrow=first_shares[0].shape[0],
+        padding=2,
+    )
+    save_image(noise_grid.clamp(0, 1), output_dir / "reference_uniform_noise.png")
 
     results = {
         "experiment": "static_gan",
@@ -108,7 +162,11 @@ def main():
         "reconstruction_mse": mse,
         "reconstruction_psnr_db": psnr,
         "share_static_metrics": share_metrics,
-        "visual": str(output_dir / "static_reconstruction_grid.png"),
+        "leave_one_share_out": masked_results,
+        "visuals": {
+            "static_reconstruction_grid": str(output_dir / "static_reconstruction_grid.png"),
+            "reference_uniform_noise": str(output_dir / "reference_uniform_noise.png"),
+        },
     }
     with (output_dir / "results.json").open("w", encoding="utf-8") as file:
         json.dump(results, file, indent=2)
@@ -117,13 +175,15 @@ def main():
     print(f"Legitimate reconstruction PSNR: {psnr:.3f} dB")
     for name, metrics in share_metrics.items():
         print(
-            f"{name}: mean={metrics['mean']:.4f}, "
-            f"std={metrics['std']:.4f}, "
+            f"{name}: mean={metrics['mean']:.4f}, std={metrics['std']:.4f}, "
             f"H-diff={metrics['horizontal_difference_mse']:.4f}, "
             f"V-diff={metrics['vertical_difference_mse']:.4f}"
         )
+    for name, metrics in masked_results.items():
+        print(f"{name}: PSNR={metrics['psnr_db']:.3f} dB")
     print(f"Saved: {output_dir / 'results.json'}")
     print(f"Saved: {output_dir / 'static_reconstruction_grid.png'}")
+    print(f"Saved: {output_dir / 'reference_uniform_noise.png'}")
 
 
 if __name__ == "__main__":
