@@ -10,6 +10,7 @@ import torch
 from models.decoder import ShareDecoder
 from models.encoder import ShareEncoder
 from models.static_discriminator import StaticDiscriminator
+from project_utils import build_cifar10_loaders
 
 
 def main():
@@ -64,6 +65,24 @@ def main():
     if torch.equal(payload, missing_share_payload):
         raise RuntimeError("Removing a share did not change the recovered payload.")
 
+    smoke_train, smoke_validation, smoke_test = build_cifar10_loaders(
+        data_dir="data",
+        train_images=8,
+        validation_images=4,
+        test_images=4,
+        batch_size=2,
+        image_size=32,
+        seed=42,
+    )
+    train_indices = set(smoke_train.dataset.indices)
+    validation_indices = set(smoke_validation.dataset.indices)
+    if train_indices.intersection(validation_indices):
+        raise RuntimeError("Train and validation subsets overlap.")
+    if len(train_indices) != 8 or len(validation_indices) != 4 or len(smoke_test.dataset) != 4:
+        raise RuntimeError("Unexpected split sizes in loader smoke test.")
+    if train_indices.intersection(validation_indices):
+        raise RuntimeError("Train and validation subsets overlap.")
+    print("Deterministic train/validation/test split smoke test passed.")
     print("TV-static share construction smoke test passed.")
 
 
