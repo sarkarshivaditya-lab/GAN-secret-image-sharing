@@ -33,7 +33,7 @@ def parse_args():
     parser.add_argument("--discriminator-lr", type=float, default=2e-4)
     parser.add_argument("--static-weight", type=float, default=0.001)
     parser.add_argument("--l1-weight", type=float, default=0.10)
-    parser.add_argument("--color-weight", type=float, default=0.10)
+    parser.add_argument("--color-weight", type=float, default=1.0)
     parser.add_argument("--discriminator-steps", type=int, default=1)
     parser.add_argument("--grad-clip", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=42)
@@ -83,11 +83,31 @@ def reconstruction_loss(reconstruction, images, l1_weight):
 
 
 def color_loss(reconstruction, images):
-    reconstruction_rg = reconstruction[:, 0] - reconstruction[:, 1]
-    reconstruction_gb = reconstruction[:, 1] - reconstruction[:, 2]
-    target_rg = images[:, 0] - images[:, 1]
-    target_gb = images[:, 1] - images[:, 2]
-    return F.l1_loss(reconstruction_rg, target_rg) + F.l1_loss(reconstruction_gb, target_gb)
+    reconstruction_cb = (
+        -0.168736 * reconstruction[:, 0]
+        -0.331264 * reconstruction[:, 1]
+        +0.5 * reconstruction[:, 2]
+        +0.5
+    )
+    reconstruction_cr = (
+        0.5 * reconstruction[:, 0]
+        -0.418688 * reconstruction[:, 1]
+        -0.081312 * reconstruction[:, 2]
+        +0.5
+    )
+    target_cb = (
+        -0.168736 * images[:, 0]
+        -0.331264 * images[:, 1]
+        +0.5 * images[:, 2]
+        +0.5
+    )
+    target_cr = (
+        0.5 * images[:, 0]
+        -0.418688 * images[:, 1]
+        -0.081312 * images[:, 2]
+        +0.5
+    )
+    return F.l1_loss(reconstruction_cb, target_cb) + F.l1_loss(reconstruction_cr, target_cr)
 
 
 def static_statistics(shares):
