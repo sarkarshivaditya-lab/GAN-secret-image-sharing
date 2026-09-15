@@ -17,8 +17,9 @@ NUM_SHARES = 4
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate a TV-static share GAN.")
     parser.add_argument("--checkpoint-dir", default="checkpoints/static_gan")
-    parser.add_argument("--split", choices=("train", "test"), default="test")
+    parser.add_argument("--split", choices=("train", "validation", "test"), default="test")
     parser.add_argument("--train-images", type=int, default=10000)
+    parser.add_argument("--validation-images", type=int, default=1000)
     parser.add_argument("--test-images", type=int, default=1000)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--image-size", type=int, default=256)
@@ -53,10 +54,6 @@ def static_metrics(share):
     }
 
 
-def normalize_reference_noise(share):
-    return torch.rand_like(share)
-
-
 def masked_reconstruction(decoder, shares, missing_index):
     masked = list(shares)
     masked[missing_index] = torch.zeros_like(masked[missing_index])
@@ -74,16 +71,29 @@ def main():
     encoder = load(ShareEncoder().to(device), checkpoint_dir / "encoder_best.pth", device)
     decoder = load(ShareDecoder().to(device), checkpoint_dir / "decoder_best.pth", device)
 
-    train_loader, test_loader = build_cifar10_loaders(
+    train_loader, validation_loader, test_loader = build_cifar10_loaders(
         data_dir=args.data_dir,
         train_images=args.train_images,
+        validation_images=args.validation_images,
         test_images=args.test_images,
         batch_size=args.batch_size,
         image_size=args.image_size,
         seed=args.seed,
     )
-    loader = train_loader if args.split == "train" else test_loader
-    sample_count = args.train_images if args.split == "train" else args.test_images
+
+    loaders = {
+        "train": train_loader,
+        "validation": validation_loader,
+        "test": test_loader,
+    }
+    counts = {
+        "train": args.train_images,
+        "validation": args.validation_images,
+        "test": args.test_images,
+    }
+    loader = loaders[args.split]
+    sample_count = counts[args.split]
+
     if sample_count < 1:
         raise ValueError("The selected split must contain at least one image")
     if args.samples < 1:
@@ -170,6 +180,7 @@ def main():
         "device": str(device),
         "split": args.split,
         "train_images": args.train_images,
+        "validation_images": args.validation_images,
         "test_images": args.test_images,
         "evaluated_images": sample_count,
         "reconstruction_mse": mse,
@@ -187,7 +198,7 @@ def main():
     print(f"Device: {device}")
     print(f"Evaluation split: {args.split}")
     print(f"Evaluated images: {sample_count}")
-    print(f"Legitimate reconstruction PSNR: {psnr:.3f} dB")
+    print(f"Reconstruction PSNR: {psnr:.3f} dB")
     for name, metrics in share_metrics.items():
         print(
             f"{name}: mean={metrics['mean']:.4f}, std={metrics['std']:.4f}, "
