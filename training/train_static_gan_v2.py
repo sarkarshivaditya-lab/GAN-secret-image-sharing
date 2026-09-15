@@ -131,22 +131,29 @@ def evaluate(encoder, decoder, loader, device):
     return mse, psnr_from_mse(mse), static_totals
 
 
-def save_best(encoder, decoder, discriminators, epoch, mse, psnr, static_metrics, args, device):
+def save_checkpoint(encoder, decoder, discriminators, directory, prefix):
+    torch.save(encoder.state_dict(), directory / f"encoder_{prefix}.pth")
+    torch.save(decoder.state_dict(), directory / f"decoder_{prefix}.pth")
+    for index, discriminator in enumerate(discriminators, start=1):
+        torch.save(
+            discriminator.state_dict(),
+            directory / f"static_discriminator_{index}_{prefix}.pth",
+        )
+
+
+def save_best(encoder, decoder, discriminators, epoch, mse, psnr, static_metrics, args, device, prefix):
     directory = Path(args.checkpoint_dir)
     directory.mkdir(parents=True, exist_ok=True)
-    torch.save(encoder.state_dict(), directory / "encoder_best.pth")
-    torch.save(decoder.state_dict(), directory / "decoder_best.pth")
-    for index, discriminator in enumerate(discriminators, start=1):
-        torch.save(discriminator.state_dict(), directory / f"static_discriminator_{index}_best.pth")
+    save_checkpoint(encoder, decoder, discriminators, directory, prefix)
 
     save_json(
         {
             "experiment": "static_gan_v2",
             "share_scheme": "three_independent_uniform_masks_plus_modular_payload_share",
             "best_epoch": epoch,
-            "validation_mse": mse,
-            "validation_psnr_db": psnr,
-            "validation_static_metrics": static_metrics,
+            f"{prefix}_mse": mse,
+            f"{prefix}_psnr_db": psnr,
+            f"{prefix}_static_metrics": static_metrics,
             "train_images": args.train_images,
             "validation_images": args.validation_images,
             "test_images": args.test_images,
@@ -162,7 +169,7 @@ def save_best(encoder, decoder, discriminators, epoch, mse, psnr, static_metrics
             "seed": args.seed,
             "device": str(device),
         },
-        directory / "best_info.json",
+        directory / f"{prefix}_info.json",
     )
 
 
@@ -217,7 +224,8 @@ def main():
         for discriminator in discriminators
     ]
 
-    best_psnr = float("-inf")
+    best_validation_psnr = float("-inf")
+    best_train_psnr = float("-inf")
     history = []
 
     for epoch in range(1, args.epochs + 1):
@@ -288,6 +296,12 @@ def main():
                     f"D-acc {discriminator_accuracy * 100:.2f}%"
                 )
 
+        train_mse, train_psnr, train_static = evaluate(
+            encoder,
+            decoder,
+            train_loader,
+            device,
+        )
         validation_mse, validation_psnr, validation_static = evaluate(
             encoder,
             decoder,
@@ -303,13 +317,16 @@ def main():
             "train_discriminator_loss": totals["discriminator"] / batches,
             "train_discriminator_accuracy": totals["discriminator_accuracy"] / batches,
             "train_generator_loss": totals["generator"] / batches,
+            "train_eval_mse": train_mse,
+            "train_eval_psnr_db": train_psnr,
             "validation_mse": validation_mse,
             "validation_psnr_db": validation_psnr,
         }
         history.append(row)
 
         print(
-            f"Epoch {epoch}/{args.epochs} | Validation MSE {validation_mse:.6f} | "
+            f"Epoch {epoch}/{args.epochs} | Train MSE {train_mse:.6f} | "
+            f"Train PSNR {train_psnr:.3f} dB | Validation MSE {validation_mse:.6f} | "
             f"Validation PSNR {validation_psnr:.3f} dB"
         )
         for index, metrics in enumerate(validation_static, start=1):
@@ -319,8 +336,24 @@ def main():
                 f"V-diff {metrics['vertical_difference_mse']:.4f}"
             )
 
-        if validation_psnr > best_psnr:
-            best_psnr = validation_psnr
+        if train_psnr > best_train_psnr:
+            best_train_psnr = train_psnr
+            save_best(
+                encoder,
+                decoder,
+                discriminators,
+                epoch,
+                train_mse,
+                train_psnr,
+                train_static,
+                args,
+                device,
+                "train_best",
+            )
+            print(f"Saved new best training checkpoint: {best_train_psnr:.3f} dB")
+
+        if validation_psnr > best_validation_psnr:
+            best_validation_psnr = validation_psnr
             save_best(
                 encoder,
                 decoder,
@@ -331,8 +364,9 @@ def main():
                 validation_static,
                 args,
                 device,
+                "validation_best",
             )
-            print(f"Saved new best checkpoint: {best_psnr:.3f} dB")
+            print(f"Saved new best validation checkpoint: {best_validation_psnr:.3f} dB")
 
     directory = Path(args.checkpoint_dir)
     save_csv(history, directory / "training_log.csv")
@@ -340,13 +374,15 @@ def main():
         {
             "experiment": "static_gan_v2",
             "share_scheme": "three_independent_uniform_masks_plus_modular_payload_share",
-            "best_validation_psnr_db": best_psnr,
+            "best_train_psnr_db": best_train_psnr,
+            "best_validation_psnr_db": best_validation_psnr,
             "history": history,
         },
         directory / "training_history.json",
     )
     print("Training complete.")
-    print(f"Best validation PSNR: {best_psnr:.3f} dB")
+    print(f"Best training PSNR: {best_train_psnr:.3f} dB")
+    print(f"Best validation PSNR: {best_validation_psnr:.3f} dB")
     print(f"Checkpoints: {args.checkpoint_dir}")
 
 
