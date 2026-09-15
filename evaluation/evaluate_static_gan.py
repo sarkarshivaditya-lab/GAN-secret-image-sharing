@@ -17,11 +17,13 @@ NUM_SHARES = 4
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate a TV-static share GAN.")
     parser.add_argument("--checkpoint-dir", default="checkpoints/static_gan")
+    parser.add_argument("--split", choices=("train", "test"), default="test")
+    parser.add_argument("--train-images", type=int, default=10000)
     parser.add_argument("--test-images", type=int, default=1000)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--image-size", type=int, default=256)
     parser.add_argument("--data-dir", default="data")
-    parser.add_argument("--seed", type=int, default=123)
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output-dir", default="outputs/static_gan")
     parser.add_argument("--samples", type=int, default=8)
     return parser.parse_args()
@@ -52,8 +54,7 @@ def static_metrics(share):
 
 
 def normalize_reference_noise(share):
-    noise = torch.rand_like(share)
-    return noise
+    return torch.rand_like(share)
 
 
 def masked_reconstruction(decoder, shares, missing_index):
@@ -73,14 +74,20 @@ def main():
     encoder = load(ShareEncoder().to(device), checkpoint_dir / "encoder_best.pth", device)
     decoder = load(ShareDecoder().to(device), checkpoint_dir / "decoder_best.pth", device)
 
-    _, test_loader = build_cifar10_loaders(
+    train_loader, test_loader = build_cifar10_loaders(
         data_dir=args.data_dir,
-        train_images=1,
+        train_images=args.train_images,
         test_images=args.test_images,
         batch_size=args.batch_size,
         image_size=args.image_size,
         seed=args.seed,
     )
+    loader = train_loader if args.split == "train" else test_loader
+    sample_count = args.train_images if args.split == "train" else args.test_images
+    if sample_count < 1:
+        raise ValueError("The selected split must contain at least one image")
+    if args.samples < 1:
+        raise ValueError("samples must be positive")
 
     total_mse = 0.0
     total_count = 0
@@ -92,7 +99,7 @@ def main():
     aggregate_static = [[] for _ in range(NUM_SHARES)]
 
     with torch.no_grad():
-        for images, _ in test_loader:
+        for images, _ in loader:
             images = images.to(device)
             shares = encoder(images)
             reconstruction = reconstruct(decoder, shares)
@@ -107,9 +114,13 @@ def main():
             missing_share_count += batch
 
             if first_images is None:
-                first_images = images[:args.samples]
-                first_shares = [share[:args.samples] for share in shares]
-                first_reconstruction = reconstruction[:args.samples]
+                display_count = min(args.samples, batch)
+                first_images = images[:display_count]
+                first_shares = [share[:display_count] for share in shares]
+                first_reconstruction = reconstruction[:display_count]
+
+    if total_count == 0:
+        raise RuntimeError(f"No images were loaded from the {args.split} split")
 
     mse = total_mse / total_count
     psnr = float("inf") if mse <= 0 else 10.0 * torch.log10(torch.tensor(1.0 / mse)).item()
@@ -146,9 +157,8 @@ def main():
     )
     save_image(grid.clamp(0, 1), output_dir / "static_reconstruction_grid.png")
 
-    noise_grid_rows = [normalize_reference_noise(first_shares[0])]
     noise_grid = make_grid(
-        torch.cat(noise_grid_rows, dim=0).cpu(),
+        first_shares[0].cpu(),
         nrow=first_shares[0].shape[0],
         padding=2,
     )
@@ -158,7 +168,10 @@ def main():
         "experiment": "static_gan",
         "checkpoint_dir": str(checkpoint_dir),
         "device": str(device),
+        "split": args.split,
+        "train_images": args.train_images,
         "test_images": args.test_images,
+        "evaluated_images": sample_count,
         "reconstruction_mse": mse,
         "reconstruction_psnr_db": psnr,
         "share_static_metrics": share_metrics,
@@ -172,6 +185,8 @@ def main():
         json.dump(results, file, indent=2)
 
     print(f"Device: {device}")
+    print(f"Evaluation split: {args.split}")
+    print(f"Evaluated images: {sample_count}")
     print(f"Legitimate reconstruction PSNR: {psnr:.3f} dB")
     for name, metrics in share_metrics.items():
         print(
