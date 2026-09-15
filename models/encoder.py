@@ -26,8 +26,12 @@ class ShareEncoder(nn.Module):
             nn.Sigmoid(),
         )
 
+    def encode_payload(self, x):
+        """Encode an image directly into the learned 3x32x32 payload."""
+        return self.payload(self.features(x))
+
     def forward(self, x):
-        payload = self.payload(self.features(x))
+        payload = self.encode_payload(x)
 
         share1 = torch.rand_like(payload)
         share2 = torch.rand_like(payload)
