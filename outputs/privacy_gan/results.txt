@@ -1,7 +1,13 @@
-Privacy-GAN independent attacker evaluation
-Legitimate Reconstruction PSNR: 32.544195 dB
+Privacy-GAN evaluation
 
-Share 1: 18.868996 dB
-Share 2: 19.883430 dB
-Share 3: 13.102749 dB
-Share 4: 18.672466 dB
+Legitimate reconstruction PSNR: 36.384533 dB
+share_1: 11.028546 dB
+share_2: 30.624960 dB
+share_3: 6.730185 dB
+share_4: 4.886873 dB
+
+Partial zero-filled diagnostic:
+1 available shares: 6.842090 dB
+2 available shares: 7.910848 dB
+3 available shares: 36.384542 dB
+4 available shares: 36.384533 dB
