@@ -10,7 +10,6 @@ from models.static_discriminator import StaticDiscriminator
 from project_utils import (
     NUM_SHARES,
     build_cifar10_loaders,
-    checkpoint_paths,
     get_device,
     psnr_from_mse,
     reconstruct,
@@ -31,8 +30,10 @@ def parse_args():
     parser.add_argument("--image-size", type=int, default=256)
     parser.add_argument("--generator-lr", type=float, default=1e-4)
     parser.add_argument("--discriminator-lr", type=float, default=2e-4)
-    parser.add_argument("--static-weight", type=float, default=0.05)
-    parser.add_argument("--statistics-weight", type=float, default=0.10)
+    parser.add_argument("--static-weight", type=float, default=0.025)
+    parser.add_argument("--statistics-weight", type=float, default=0.05)
+    parser.add_argument("--contribution-weight", type=float, default=0.05)
+    parser.add_argument("--discriminator-steps", type=int, default=2)
     parser.add_argument("--grad-clip", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--data-dir", default="data")
@@ -65,7 +66,6 @@ def load_initialization(encoder, decoder, args, device):
 
 
 def static_statistics_loss(shares):
-    """Match the first-order statistics of uniform random TV static."""
     target_mean = 0.5
     target_std = 1.0 / (12.0 ** 0.5)
     total = 0.0
@@ -73,53 +73,71 @@ def static_statistics_loss(shares):
     for share in shares:
         mean = share.mean(dim=(1, 2, 3))
         std = share.flatten(1).std(dim=1, unbiased=False)
-
-        horizontal = (share[:, :, :, 1:] - share[:, :, :, :-1]).pow(2).mean()
-        vertical = (share[:, :, 1:, :] - share[:, :, :-1, :]).pow(2).mean()
+        horizontal = (share[:, :, :, 1:] - share[:, :, :, :-1]).pow(2).mean(dim=(1, 2, 3))
+        vertical = (share[:, :, 1:, :] - share[:, :, :-1, :]).pow(2).mean(dim=(1, 2, 3))
 
         total = total + F.mse_loss(mean, torch.full_like(mean, target_mean))
         total = total + F.mse_loss(std, torch.full_like(std, target_std))
         total = total + 0.25 * F.mse_loss(
             horizontal,
-            torch.tensor(1.0 / 6.0, device=share.device),
+            torch.full_like(horizontal, 1.0 / 6.0),
         )
         total = total + 0.25 * F.mse_loss(
             vertical,
-            torch.tensor(1.0 / 6.0, device=share.device),
+            torch.full_like(vertical, 1.0 / 6.0),
         )
 
     return total / NUM_SHARES
 
 
-def train_static_discriminators(discriminators, optimizers, shares):
+def share_contribution_loss(decoder, shares):
+    """Prevent the decoder from silently ignoring one or more share channels."""
+    with torch.no_grad():
+        combined = decoder(*shares).detach()
+
+    contribution_targets = []
+    for index in range(NUM_SHARES):
+        masked = list(shares)
+        masked[index] = torch.full_like(masked[index], 0.5)
+        missing_reconstruction = decoder(*masked)
+        contribution = F.mse_loss(missing_reconstruction, combined)
+        contribution_targets.append(contribution)
+
+    values = torch.stack(contribution_targets)
+    target = values.mean().detach()
+    return F.mse_loss(values, torch.full_like(values, target))
+
+
+def train_static_discriminators(discriminators, optimizers, shares, steps):
     total_loss = 0.0
     total_correct = 0
     total_examples = 0
 
     for discriminator, optimizer, share in zip(discriminators, optimizers, shares):
-        discriminator.train()
-        real_static = torch.rand_like(share)
+        for _ in range(steps):
+            discriminator.train()
+            real_static = torch.rand_like(share)
+            real_logits = discriminator(real_static)
+            fake_logits = discriminator(share.detach())
+            real_targets = torch.ones_like(real_logits)
+            fake_targets = torch.zeros_like(fake_logits)
 
-        real_logits = discriminator(real_static)
-        fake_logits = discriminator(share.detach())
-        real_targets = torch.ones_like(real_logits)
-        fake_targets = torch.zeros_like(fake_logits)
+            loss = 0.5 * (
+                F.binary_cross_entropy_with_logits(real_logits, real_targets)
+                + F.binary_cross_entropy_with_logits(fake_logits, fake_targets)
+            )
 
-        loss = 0.5 * (
-            F.binary_cross_entropy_with_logits(real_logits, real_targets)
-            + F.binary_cross_entropy_with_logits(fake_logits, fake_targets)
-        )
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
 
-        optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        optimizer.step()
+            total_loss += loss.item()
+            total_correct += (real_logits >= 0).sum().item()
+            total_correct += (fake_logits < 0).sum().item()
+            total_examples += 2 * share.shape[0]
 
-        total_loss += loss.item()
-        total_correct += (real_logits >= 0).sum().item()
-        total_correct += (fake_logits < 0).sum().item()
-        total_examples += 2 * share.shape[0]
-
-    return total_loss / NUM_SHARES, total_correct / total_examples
+    divisor = NUM_SHARES * steps
+    return total_loss / divisor, total_correct / total_examples
 
 
 def generator_static_loss(discriminators, shares):
@@ -151,14 +169,10 @@ def evaluate(encoder, decoder, loader, device):
 def save_best(encoder, decoder, discriminators, epoch, mse, psnr, args, device):
     directory = Path(args.checkpoint_dir)
     directory.mkdir(parents=True, exist_ok=True)
-    paths = checkpoint_paths(directory)
-
-    torch.save(encoder.state_dict(), paths["encoder"])
-    torch.save(decoder.state_dict(), paths["decoder"])
-    torch.save(discriminators[0].state_dict(), directory / "static_discriminator_1_best.pth")
-    torch.save(discriminators[1].state_dict(), directory / "static_discriminator_2_best.pth")
-    torch.save(discriminators[2].state_dict(), directory / "static_discriminator_3_best.pth")
-    torch.save(discriminators[3].state_dict(), directory / "static_discriminator_4_best.pth")
+    torch.save(encoder.state_dict(), directory / "encoder_best.pth")
+    torch.save(decoder.state_dict(), directory / "decoder_best.pth")
+    for index, discriminator in enumerate(discriminators, start=1):
+        torch.save(discriminator.state_dict(), directory / f"static_discriminator_{index}_best.pth")
 
     save_json(
         {
@@ -175,18 +189,20 @@ def save_best(encoder, decoder, discriminators, epoch, mse, psnr, args, device):
             "discriminator_lr": args.discriminator_lr,
             "static_weight": args.static_weight,
             "statistics_weight": args.statistics_weight,
+            "contribution_weight": args.contribution_weight,
+            "discriminator_steps": args.discriminator_steps,
             "seed": args.seed,
             "init_checkpoint_dir": args.init_checkpoint_dir,
             "device": str(device),
         },
-        paths["metadata"],
+        directory / "best_info.json",
     )
 
 
 def main():
     args = parse_args()
-    if args.epochs < 1:
-        raise ValueError("epochs must be positive")
+    if args.epochs < 1 or args.discriminator_steps < 1:
+        raise ValueError("epochs and discriminator-steps must be positive")
 
     seed_everything(args.seed)
     device = get_device()
@@ -198,6 +214,8 @@ def main():
     print(f"Batch size: {args.batch_size}")
     print(f"Static GAN weight: {args.static_weight}")
     print(f"Statistics weight: {args.statistics_weight}")
+    print(f"Contribution weight: {args.contribution_weight}")
+    print(f"Discriminator steps: {args.discriminator_steps}")
     print()
 
     train_loader, test_loader = build_cifar10_loaders(
@@ -215,12 +233,10 @@ def main():
 
     load_initialization(encoder, decoder, args, device)
 
-    generator_optimizer = torch.optim.Adam(
-        list(encoder.parameters()) + list(decoder.parameters()),
-        lr=args.generator_lr,
-    )
+    generator_parameters = list(encoder.parameters()) + list(decoder.parameters())
+    generator_optimizer = torch.optim.Adam(generator_parameters, lr=args.generator_lr, betas=(0.5, 0.999))
     discriminator_optimizers = [
-        torch.optim.Adam(discriminator.parameters(), lr=args.discriminator_lr)
+        torch.optim.Adam(discriminator.parameters(), lr=args.discriminator_lr, betas=(0.5, 0.999))
         for discriminator in discriminators
     ]
 
@@ -234,6 +250,7 @@ def main():
             "reconstruction": 0.0,
             "static": 0.0,
             "statistics": 0.0,
+            "contribution": 0.0,
             "discriminator": 0.0,
             "discriminator_accuracy": 0.0,
             "generator": 0.0,
@@ -248,6 +265,7 @@ def main():
                 discriminators,
                 discriminator_optimizers,
                 shares,
+                args.discriminator_steps,
             )
 
             shares = encoder(images)
@@ -255,6 +273,7 @@ def main():
             reconstruction_loss = F.mse_loss(reconstruction, images)
             static_loss = generator_static_loss(discriminators, shares)
             statistics_loss = static_statistics_loss(shares)
+            contribution_loss = share_contribution_loss(decoder, shares)
 
             for discriminator in discriminators:
                 for parameter in discriminator.parameters():
@@ -266,14 +285,12 @@ def main():
                 reconstruction_loss
                 + args.static_weight * static_loss
                 + args.statistics_weight * statistics_loss
+                + args.contribution_weight * contribution_loss
             )
 
             generator_optimizer.zero_grad(set_to_none=True)
             generator_loss.backward()
-            torch.nn.utils.clip_grad_norm_(
-                list(encoder.parameters()) + list(decoder.parameters()),
-                args.grad_clip,
-            )
+            torch.nn.utils.clip_grad_norm_(generator_parameters, args.grad_clip)
             generator_optimizer.step()
 
             for discriminator in discriminators:
@@ -283,6 +300,7 @@ def main():
             totals["reconstruction"] += reconstruction_loss.item()
             totals["static"] += static_loss.item()
             totals["statistics"] += statistics_loss.item()
+            totals["contribution"] += contribution_loss.item()
             totals["discriminator"] += discriminator_loss
             totals["discriminator_accuracy"] += discriminator_accuracy
             totals["generator"] += generator_loss.item()
@@ -294,20 +312,17 @@ def main():
                     f"Recon {reconstruction_loss.item():.6f} | "
                     f"Static {static_loss.item():.6f} | "
                     f"Stats {statistics_loss.item():.6f} | "
+                    f"Contrib {contribution_loss.item():.6f} | "
                     f"D-acc {discriminator_accuracy * 100:.2f}%"
                 )
 
-        validation_mse, validation_psnr = evaluate(
-            encoder,
-            decoder,
-            test_loader,
-            device,
-        )
+        validation_mse, validation_psnr = evaluate(encoder, decoder, test_loader, device)
         row = {
             "epoch": epoch,
             "train_reconstruction_loss": totals["reconstruction"] / batches,
             "train_static_loss": totals["static"] / batches,
             "train_statistics_loss": totals["statistics"] / batches,
+            "train_contribution_loss": totals["contribution"] / batches,
             "train_discriminator_loss": totals["discriminator"] / batches,
             "train_discriminator_accuracy": totals["discriminator_accuracy"] / batches,
             "train_generator_loss": totals["generator"] / batches,
@@ -317,23 +332,13 @@ def main():
         history.append(row)
 
         print(
-            f"Epoch {epoch}/{args.epochs} | "
-            f"Validation MSE {validation_mse:.6f} | "
+            f"Epoch {epoch}/{args.epochs} | Validation MSE {validation_mse:.6f} | "
             f"Validation PSNR {validation_psnr:.3f} dB"
         )
 
         if validation_psnr > best_psnr:
             best_psnr = validation_psnr
-            save_best(
-                encoder,
-                decoder,
-                discriminators,
-                epoch,
-                validation_mse,
-                validation_psnr,
-                args,
-                device,
-            )
+            save_best(encoder, decoder, discriminators, epoch, validation_mse, validation_psnr, args, device)
             print(f"Saved new best checkpoint: {best_psnr:.3f} dB")
 
     save_csv(history, Path(args.checkpoint_dir) / "training_log.csv")
