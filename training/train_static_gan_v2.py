@@ -24,6 +24,7 @@ def parse_args():
         description="Train a learned image decoder with four mathematically noise-like shares."
     )
     parser.add_argument("--train-images", type=int, default=10000)
+    parser.add_argument("--validation-images", type=int, default=1000)
     parser.add_argument("--test-images", type=int, default=1000)
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=8)
@@ -147,6 +148,7 @@ def save_best(encoder, decoder, discriminators, epoch, mse, psnr, static_metrics
             "validation_psnr_db": psnr,
             "validation_static_metrics": static_metrics,
             "train_images": args.train_images,
+            "validation_images": args.validation_images,
             "test_images": args.test_images,
             "epochs": args.epochs,
             "batch_size": args.batch_size,
@@ -173,6 +175,7 @@ def main():
     print(f"Device: {device}")
     print("TV-Static Share GAN v2")
     print(f"Train images: {args.train_images}")
+    print(f"Validation images: {args.validation_images}")
     print(f"Test images: {args.test_images}")
     print(f"Epochs: {args.epochs}")
     print(f"Batch size: {args.batch_size}")
@@ -183,9 +186,10 @@ def main():
     print("Initialization: scratch")
     print()
 
-    train_loader, test_loader = build_cifar10_loaders(
+    train_loader, validation_loader, _ = build_cifar10_loaders(
         data_dir=args.data_dir,
         train_images=args.train_images,
+        validation_images=args.validation_images,
         test_images=args.test_images,
         batch_size=args.batch_size,
         image_size=args.image_size,
@@ -284,7 +288,7 @@ def main():
         validation_mse, validation_psnr, validation_static = evaluate(
             encoder,
             decoder,
-            test_loader,
+            validation_loader,
             device,
         )
         row = {
