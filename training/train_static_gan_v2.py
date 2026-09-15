@@ -28,12 +28,11 @@ def parse_args():
     parser.add_argument("--test-images", type=int, default=1000)
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--image-size", type=int, default=256)
+    parser.add_argument("--image-size", type=int, default=32)
     parser.add_argument("--generator-lr", type=float, default=1e-4)
     parser.add_argument("--discriminator-lr", type=float, default=2e-4)
     parser.add_argument("--static-weight", type=float, default=0.001)
     parser.add_argument("--l1-weight", type=float, default=0.10)
-    parser.add_argument("--color-weight", type=float, default=1.0)
     parser.add_argument("--discriminator-steps", type=int, default=1)
     parser.add_argument("--grad-clip", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=42)
@@ -80,34 +79,6 @@ def reconstruction_loss(reconstruction, images, l1_weight):
     mse = F.mse_loss(reconstruction, images)
     l1 = F.l1_loss(reconstruction, images)
     return mse + l1_weight * l1, mse, l1
-
-
-def color_loss(reconstruction, images):
-    reconstruction_cb = (
-        -0.168736 * reconstruction[:, 0]
-        -0.331264 * reconstruction[:, 1]
-        +0.5 * reconstruction[:, 2]
-        +0.5
-    )
-    reconstruction_cr = (
-        0.5 * reconstruction[:, 0]
-        -0.418688 * reconstruction[:, 1]
-        -0.081312 * reconstruction[:, 2]
-        +0.5
-    )
-    target_cb = (
-        -0.168736 * images[:, 0]
-        -0.331264 * images[:, 1]
-        +0.5 * images[:, 2]
-        +0.5
-    )
-    target_cr = (
-        0.5 * images[:, 0]
-        -0.418688 * images[:, 1]
-        -0.081312 * images[:, 2]
-        +0.5
-    )
-    return F.l1_loss(reconstruction_cb, target_cb) + F.l1_loss(reconstruction_cr, target_cr)
 
 
 def static_statistics(shares):
@@ -186,7 +157,6 @@ def save_best(encoder, decoder, discriminators, epoch, mse, psnr, static_metrics
             "discriminator_lr": args.discriminator_lr,
             "static_weight": args.static_weight,
             "l1_weight": args.l1_weight,
-            "color_weight": args.color_weight,
             "discriminator_steps": args.discriminator_steps,
             "grad_clip": args.grad_clip,
             "seed": args.seed,
@@ -212,9 +182,9 @@ def main():
     print(f"Batch size: {args.batch_size}")
     print(f"Static GAN weight: {args.static_weight}")
     print(f"L1 weight: {args.l1_weight}")
-    print(f"Color weight: {args.color_weight}")
     print(f"Discriminator steps: {args.discriminator_steps}")
     print("Share construction: three independent uniform masks plus one modular payload share")
+    print("Reconstruction resolution: native CIFAR-10 32x32")
     print("Initialization: scratch")
     print()
 
@@ -257,7 +227,6 @@ def main():
             "reconstruction": 0.0,
             "mse": 0.0,
             "l1": 0.0,
-            "color": 0.0,
             "static": 0.0,
             "discriminator": 0.0,
             "discriminator_accuracy": 0.0,
@@ -284,7 +253,6 @@ def main():
                 images,
                 args.l1_weight,
             )
-            chroma_loss = color_loss(reconstruction, images)
 
             for discriminator in discriminators:
                 for parameter in discriminator.parameters():
@@ -292,11 +260,7 @@ def main():
                 discriminator.eval()
 
             static_loss = generator_static_loss(discriminators, shares)
-            generator_loss = (
-                total_recon
-                + args.color_weight * chroma_loss
-                + args.static_weight * static_loss
-            )
+            generator_loss = total_recon + args.static_weight * static_loss
 
             generator_optimizer.zero_grad(set_to_none=True)
             generator_loss.backward()
@@ -310,7 +274,6 @@ def main():
             totals["reconstruction"] += total_recon.item()
             totals["mse"] += mse_loss.item()
             totals["l1"] += l1_loss.item()
-            totals["color"] += chroma_loss.item()
             totals["static"] += static_loss.item()
             totals["discriminator"] += discriminator_loss
             totals["discriminator_accuracy"] += discriminator_accuracy
@@ -321,7 +284,7 @@ def main():
                 print(
                     f"Epoch {epoch}/{args.epochs} | Batch {batch_index}/{len(train_loader)} | "
                     f"Recon {mse_loss.item():.6f} | L1 {l1_loss.item():.6f} | "
-                    f"Color {chroma_loss.item():.6f} | Static {static_loss.item():.6f} | "
+                    f"Static {static_loss.item():.6f} | "
                     f"D-acc {discriminator_accuracy * 100:.2f}%"
                 )
 
@@ -336,7 +299,6 @@ def main():
             "train_reconstruction_loss": totals["reconstruction"] / batches,
             "train_mse": totals["mse"] / batches,
             "train_l1": totals["l1"] / batches,
-            "train_color_loss": totals["color"] / batches,
             "train_static_loss": totals["static"] / batches,
             "train_discriminator_loss": totals["discriminator"] / batches,
             "train_discriminator_accuracy": totals["discriminator_accuracy"] / batches,
