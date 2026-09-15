@@ -21,6 +21,10 @@ class ShareDecoder(nn.Module):
             nn.Sigmoid(),
         )
 
+    def decode_payload(self, payload):
+        """Decode a 3x32x32 payload directly into a reconstructed image."""
+        return self.decoder(payload)
+
     def forward(self, share1, share2, share3, share4):
         payload = torch.remainder(share1 + share2 + share3 + share4, 1.0)
-        return self.decoder(payload)
+        return self.decode_payload(payload)
