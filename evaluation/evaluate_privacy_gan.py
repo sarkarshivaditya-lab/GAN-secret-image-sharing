@@ -228,9 +228,17 @@ def evaluate_full_and_partial(encoder, decoder, loader, device, visual_samples):
     if first_batch is not None:
         images, shares, reconstructed = first_batch
         sample_count = min(visual_samples, images.shape[0])
+        visual_shares = [
+            F.interpolate(
+                share[:sample_count],
+                size=images.shape[-2:],
+                mode="nearest",
+            )
+            for share in shares
+        ]
         save_comparison_grid(
             images[:sample_count],
-            [share[:sample_count] for share in shares],
+            visual_shares,
             reconstructed[:sample_count],
             "outputs/privacy_gan/visuals/full_reconstruction_grid.png",
         )
