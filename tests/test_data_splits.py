@@ -1,5 +1,3 @@
-import torch
-
 from project_utils import build_cifar10_loaders
 
 
@@ -29,16 +27,16 @@ def test_train_validation_splits_are_disjoint_and_deterministic():
 
     train_1 = set(subset_indices(train_loader_1))
     validation_1 = set(subset_indices(validation_loader_1))
-    test_1 = set(test_loader_1.dataset.indices)
 
     assert train_1.isdisjoint(validation_1)
-    assert train_1.isdisjoint(test_1)
-    assert validation_1.isdisjoint(test_1)
+    assert train_loader_1.dataset.dataset.train is True
+    assert validation_loader_1.dataset.dataset.train is True
+    assert test_loader_1.dataset.dataset.train is False
 
     assert subset_indices(train_loader_1) == subset_indices(train_loader_2)
     assert subset_indices(validation_loader_1) == subset_indices(validation_loader_2)
-    assert list(test_loader_1.dataset.indices) == list(test_loader_2.dataset.indices)
+    assert subset_indices(test_loader_1) == subset_indices(test_loader_2)
 
     assert len(train_1) == 100
     assert len(validation_1) == 25
-    assert len(test_1) == 50
+    assert len(test_loader_1.dataset) == 50
